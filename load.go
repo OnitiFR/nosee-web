@@ -3,6 +3,7 @@ package main
 import (
 	"io/ioutil"
 	"os"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -19,7 +20,7 @@ func loadSondes(dirSondes string) ([]Sonde, error) {
 
 	sondes := make([]Sonde, 0)
 	for _, file := range files {
-		if file.IsDir() {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".toml") {
 			continue
 		}
 
