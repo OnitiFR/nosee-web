@@ -34,7 +34,7 @@ func watchSonde(watch *Watch, sonde Sonde) (s Sonde, err error) {
 	fmt.Printf("Checking %s\n", sonde.Name)
 
 	client := &http.Client{
-		Timeout: time.Duration(sonde.Timeout) * time.Millisecond,
+		Timeout: time.Second * time.Duration(sonde.Timeout),
 	}
 
 	res, err_ := client.Get(sonde.Url)
