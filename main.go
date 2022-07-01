@@ -3,10 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 const Version = "0.0.1"
@@ -27,24 +23,16 @@ func main() {
 		return
 	}
 
-	// every minutes check sondes
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-
-	for {
-		select {
-		case <-quit:
-			fmt.Println("Quit")
-			return
-		case <-time.After(time.Minute):
-			sondes, err := loadSondes(*dirSondes)
-			if err != nil {
-				panic(err)
-			}
-
-			watch := NewWatch(sondes)
-			watchSondes(watch)
-		}
+	worker := NewWorker(*dirSondes)
+	err := worker.InitialLoadSondes()
+	if err != nil {
+		panic(err)
 	}
+
+	// On parrallélise l'observation du répertoire
+	go worker.ObserveSondeDir()
+
+	// On commence a observer les sondes
+	worker.Run()
 
 }
