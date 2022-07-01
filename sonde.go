@@ -44,8 +44,6 @@ type Sonde struct {
 func (sonde *Sonde) Check(ch chan *Sonde) {
 	sonde.NextExecution = time.Now().Add(sonde.DelayMinute * time.Minute)
 
-	fmt.Printf("Checking %s\n", sonde.Name)
-
 	client := &http.Client{
 		Timeout: time.Second * 10,
 	}
