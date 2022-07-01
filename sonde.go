@@ -31,7 +31,7 @@ type Sonde struct {
 	DelayMinute       time.Duration
 	Index             bool
 	LastHttpCode      int
-	LastResponseDelay int
+	LastResponseDelay float64
 	LastStatus        Errors
 	LastError         string
 	LastErrorTime     time.Time
@@ -58,13 +58,14 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastError = err_.Error()
 		sonde.LastErrorTime = time.Now()
 		ch <- sonde
+		return
 	}
 
 	defer res.Body.Close()
 
 	responseTime := time.Since(start).Seconds()
 
-	sonde.LastResponseDelay = int(responseTime)
+	sonde.LastResponseDelay = responseTime
 	sonde.LastHttpCode = res.StatusCode
 
 	// Code HTTP invalide
@@ -73,6 +74,7 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastError = fmt.Sprintf("Reponse code : %d", res.StatusCode)
 		sonde.LastErrorTime = time.Now()
 		ch <- sonde
+		return
 	}
 
 	// Hors délai attendu pour la réponse
@@ -81,6 +83,7 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastError = fmt.Sprintf("Reponse duration too hight %ds vs %fs", sonde.Timeout, responseTime)
 		sonde.LastErrorTime = time.Now()
 		ch <- sonde
+		return
 	}
 
 	// Vérification de la présence du texte dans la réponse
@@ -112,12 +115,14 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastError = "No occurence for : " + sonde.Search
 		sonde.LastErrorTime = time.Now()
 		ch <- sonde
+		return
 	}
 	if hasNoIndex && sonde.Index {
 		sonde.LastStatus = ErrNoIndex
 		sonde.LastError = "No index found"
 		sonde.LastErrorTime = time.Now()
 		ch <- sonde
+		return
 	}
 
 	if !sonde.Index && !hasNoIndex {
@@ -125,6 +130,7 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastError = "Index found but not expected"
 		sonde.LastErrorTime = time.Now()
 		ch <- sonde
+		return
 	}
 
 	sonde.LastStatus = ErrNone
@@ -157,7 +163,7 @@ func (sonde *Sonde) DisplayInformations(wasOnError bool) {
 	fmt.Printf("DelayMinute : %s\n", sonde.DelayMinute)
 	fmt.Printf("Index : %t\n", sonde.Index)
 	fmt.Printf("LastHttpCode : %d\n", sonde.LastHttpCode)
-	fmt.Printf("LastResponseDelay : %d\n", sonde.LastResponseDelay)
+	fmt.Printf("LastResponseDelay : %fs\n", sonde.LastResponseDelay)
 	fmt.Printf("LastStatus : %d\n", sonde.LastStatus)
 	fmt.Printf("LastError : %s\n", sonde.LastError)
 	fmt.Printf("LastErrorTime : %s\n", sonde.LastErrorTime)
