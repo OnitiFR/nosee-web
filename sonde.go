@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +35,7 @@ type Sonde struct {
 	LastStatus        Errors
 	LastError         string
 	LastErrorTime     time.Time
+	OnErrorSince      time.Time
 	NextExecution     time.Time
 }
 
@@ -73,6 +74,9 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastStatus = ErrServError
 		sonde.LastError = fmt.Sprintf("Reponse code : %d", res.StatusCode)
 		sonde.LastErrorTime = time.Now()
+		if sonde.OnErrorSince.IsZero() {
+			sonde.OnErrorSince = time.Now()
+		}
 		ch <- sonde
 		return
 	}
@@ -82,6 +86,9 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastStatus = ErrDelay
 		sonde.LastError = fmt.Sprintf("Reponse duration too hight %ds vs %fs", sonde.Timeout, responseTime)
 		sonde.LastErrorTime = time.Now()
+		if sonde.OnErrorSince.IsZero() {
+			sonde.OnErrorSince = time.Now()
+		}
 		ch <- sonde
 		return
 	}
@@ -114,6 +121,9 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastStatus = ErrNoOccurence
 		sonde.LastError = "No occurence for : " + sonde.Search
 		sonde.LastErrorTime = time.Now()
+		if sonde.OnErrorSince.IsZero() {
+			sonde.OnErrorSince = time.Now()
+		}
 		ch <- sonde
 		return
 	}
@@ -121,6 +131,9 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastStatus = ErrNoIndex
 		sonde.LastError = "No index found"
 		sonde.LastErrorTime = time.Now()
+		if sonde.OnErrorSince.IsZero() {
+			sonde.OnErrorSince = time.Now()
+		}
 		ch <- sonde
 		return
 	}
@@ -129,12 +142,17 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 		sonde.LastStatus = ErrNoIndex
 		sonde.LastError = "Index found but not expected"
 		sonde.LastErrorTime = time.Now()
+		if sonde.OnErrorSince.IsZero() {
+			sonde.OnErrorSince = time.Now()
+		}
 		ch <- sonde
 		return
 	}
 
 	sonde.LastStatus = ErrNone
 	sonde.LastError = ""
+	sonde.OnErrorSince = time.Time{}
+
 	ch <- sonde
 }
 
@@ -153,22 +171,28 @@ func (sonde *Sonde) Update(s *Sonde) {
 	sonde.NextExecution = s.NextExecution
 }
 
-func (sonde *Sonde) DisplayInformations(wasOnError bool) {
-	fmt.Println("----------------------------------------------------")
-	fmt.Printf("Name : %s\n", sonde.Name)
-	fmt.Printf("Was On error : %s\n", strconv.FormatBool(wasOnError))
-	fmt.Printf("Url : %s\n", sonde.Url)
-	fmt.Printf("Search : %s\n", sonde.Search)
-	fmt.Printf("Timeout : %d\n", sonde.Timeout)
-	fmt.Printf("DelayMinute : %s\n", sonde.DelayMinute)
-	fmt.Printf("Index : %t\n", sonde.Index)
-	fmt.Printf("LastHttpCode : %d\n", sonde.LastHttpCode)
-	fmt.Printf("LastResponseDelay : %fs\n", sonde.LastResponseDelay)
-	fmt.Printf("LastStatus : %d\n", sonde.LastStatus)
-	fmt.Printf("LastError : %s\n", sonde.LastError)
-	fmt.Printf("LastErrorTime : %s\n", sonde.LastErrorTime)
-	fmt.Printf("NextExecution : %s\n", sonde.NextExecution)
-	fmt.Println("----------------------------------------------------")
+/**
+Display the sonde information
+*/
+func (sonde *Sonde) DisplayInformations(lasError string, lastErrorTime time.Time) {
+
+	if sonde.LastStatus != ErrNone {
+		file, err := os.OpenFile("sondes.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			return
+		}
+		defer file.Close()
+		fmt.Fprintf(file, "[BAD] nosee: %s (web %s) \n", sonde.LastError, sonde.Url)
+	} else if sonde.LastStatus == ErrNone && lasError != "" {
+		file, err := os.OpenFile("sondes.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			fmt.Println("Error opening file:", err)
+			return
+		}
+		defer file.Close()
+		fmt.Fprintf(file, "[GOOD] nosee: %s (web %s) error duration : %fm\n", lasError, sonde.Url, time.Since(lastErrorTime).Minutes())
+	}
 }
 
 /**

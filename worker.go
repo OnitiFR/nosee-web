@@ -43,6 +43,8 @@ func (w *Worker) InitialLoadSondes() error {
 
 	w.sondes = sondes
 
+	w.DisplaySondesList()
+
 	return nil
 }
 
@@ -75,6 +77,7 @@ func (w *Worker) ObserveSondeDir() {
 						}
 					}
 					fmt.Printf("Sonde %s supprimée\n", event.Name)
+					w.DisplaySondesList()
 				} else {
 					sonde, err := LoadFromToml(event.Name)
 					if err != nil {
@@ -93,6 +96,7 @@ func (w *Worker) ObserveSondeDir() {
 						w.sondes = append(w.sondes, sonde)
 					}
 					fmt.Printf("Sonde %s ajoutée ou mise à jour\n", sonde.Name)
+					w.DisplaySondesList()
 				}
 				// watch for errors
 			case err := <-watcher.Errors:
@@ -109,34 +113,45 @@ func (w *Worker) ObserveSondeDir() {
 	<-done
 }
 
+func (w *Worker) DisplaySondesList() {
+	fmt.Println("Liste des sondes surveillées :")
+	for _, sonde := range w.sondes {
+		fmt.Printf("%s\n", sonde.Name)
+	}
+}
+
 func (w *Worker) Run() error {
 	ch := make(chan *Sonde)
-	var errorsSondes []*Sonde
+	var errorsSondes []*SondeError
 
 	for {
 		for _, sonde := range w.sondes {
 			if sonde.NextExecution.Before(time.Now()) {
+				time.Sleep(time.Millisecond * time.Duration((100 / len(w.sondes))))
 				go sonde.Check(ch)
 				sonde := <-ch
 
-				wasOnError := false
+				lastError := ""
+				onErrorSince := time.Time{}
 				for i, sondeError := range errorsSondes {
 					if sondeError.FileName == sonde.FileName {
-						wasOnError = true
+						lastError = sondeError.LastError
+						onErrorSince = sondeError.OnErrorSince
 						errorsSondes = append(errorsSondes[:i], errorsSondes[i+1:]...)
 						break
 					}
 				}
 
 				if sonde.LastStatus != ErrNone {
-					errorsSondes = append(errorsSondes, sonde)
+					sondeError := NewSondeError(sonde)
+					errorsSondes = append(errorsSondes, sondeError)
 				}
 
-				sonde.DisplayInformations(wasOnError)
+				sonde.DisplayInformations(lastError, onErrorSince)
 			}
 		}
 
-		time.Sleep(time.Second * 1)
+		time.Sleep(time.Minute * 1)
 	}
 }
 
