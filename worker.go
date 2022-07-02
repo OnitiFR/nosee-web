@@ -126,7 +126,7 @@ func (w *Worker) Run() error {
 
 	for {
 		for _, sonde := range w.sondes {
-			if sonde.NextExecution.After(time.Now()) {
+			if time.Now().After(sonde.NextExecution) {
 				time.Sleep(time.Millisecond * time.Duration((100 / len(w.sondes))))
 				go sonde.Check(ch)
 				sonde := <-ch
