@@ -129,25 +129,28 @@ func (w *Worker) Run() error {
 			if time.Now().After(sonde.NextExecution) {
 				time.Sleep(time.Millisecond * time.Duration((100 / len(w.sondes))))
 				go sonde.Check(ch)
-				sonde := <-ch
+				go func() {
+					sonde := <-ch
 
-				lastError := ""
-				onErrorSince := time.Time{}
-				for i, sondeError := range errorsSondes {
-					if sondeError.FileName == sonde.FileName {
-						lastError = sondeError.LastError
-						onErrorSince = sondeError.OnErrorSince
-						errorsSondes = append(errorsSondes[:i], errorsSondes[i+1:]...)
-						break
+					lastError := ""
+					onErrorSince := time.Time{}
+					for i, sondeError := range errorsSondes {
+						if sondeError.FileName == sonde.FileName {
+							lastError = sondeError.LastError
+							onErrorSince = sondeError.OnErrorSince
+							errorsSondes = append(errorsSondes[:i], errorsSondes[i+1:]...)
+							break
+						}
 					}
-				}
 
-				if sonde.LastStatus != ErrNone {
-					sondeError := NewSondeError(sonde)
-					errorsSondes = append(errorsSondes, sondeError)
-				}
+					if sonde.LastStatus != ErrNone {
+						sondeError := NewSondeError(sonde)
+						errorsSondes = append(errorsSondes, sondeError)
+					}
 
-				sonde.DisplayInformations(lastError, onErrorSince)
+					sonde.DisplayInformations(lastError, onErrorSince)
+				}()
+
 			}
 		}
 
