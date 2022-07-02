@@ -44,7 +44,6 @@ type Sonde struct {
  */
 func (sonde *Sonde) Check(ch chan *Sonde) {
 	sonde.NextExecution = time.Now().Add(sonde.DelayMinute * time.Minute)
-	fmt.Printf("Checking %s => time : %s\n", sonde.Url, time.Now().String())
 
 	client := &http.Client{
 		Timeout: time.Second * 10,
@@ -184,7 +183,7 @@ func (sonde *Sonde) DisplayInformations(lasError string, lastErrorTime time.Time
 			return
 		}
 		defer file.Close()
-		fmt.Fprintf(file, "[BAD] nosee: %s (web %s) \n", sonde.LastError, sonde.Url)
+		fmt.Fprintf(file, "[%s] [BAD] %s : %s (web %s) \n", time.Now().Format("2006-01-02 15:04:05"), sonde.Name, sonde.LastError, sonde.Url)
 	} else if sonde.LastStatus == ErrNone && lasError != "" {
 		file, err := os.OpenFile("sondes.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
@@ -192,7 +191,7 @@ func (sonde *Sonde) DisplayInformations(lasError string, lastErrorTime time.Time
 			return
 		}
 		defer file.Close()
-		fmt.Fprintf(file, "[GOOD] nosee: %s (web %s) error duration : %fm\n", lasError, sonde.Url, time.Since(lastErrorTime).Minutes())
+		fmt.Fprintf(file, "[%s] [GOOD] %s : %s (web %s) error duration : %fm\n", time.Now().Format("2006-01-02 15:04:05"), sonde.Name, lasError, sonde.Url, time.Since(lastErrorTime).Minutes())
 	}
 }
 
