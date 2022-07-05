@@ -123,6 +123,7 @@ func (w *Worker) DisplaySondesList() {
 func (w *Worker) Run() error {
 	chSonde := make(chan *Sonde)
 	var hashErrSonde map[string]*SondeError = make(map[string]*SondeError)
+	defer close(chSonde)
 
 	for {
 		for _, sonde := range w.sondes {
