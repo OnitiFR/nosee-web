@@ -131,15 +131,11 @@ func (w *Worker) Run() error {
 				go sonde.Check(chSonde)
 				go func() {
 					sonde := <-chSonde
-
-					fmt.Printf("Sonde %s\n", sonde.Name)
-
 					// Détection des erreurs qui ont disparu
 					for hash, oldSerr := range hashErrSonde {
 						if oldSerr.FileName == sonde.FileName && oldSerr.IsErrorSolved(sonde.Errors) {
 							delete(hashErrSonde, hash)
 							oldSerr.DisplayResolvedError(sonde)
-							fmt.Printf("Erreur résolue : %s\n", oldSerr.Error)
 						}
 					}
 
@@ -148,7 +144,6 @@ func (w *Worker) Run() error {
 						if hashErrSonde[sondeError.Hash] == nil {
 							hashErrSonde[sondeError.Hash] = sondeError
 							sondeError.DisplayNewError(sonde)
-							fmt.Printf("Nouvelle erreur : %s\n", sondeError.Error)
 						}
 					}
 
