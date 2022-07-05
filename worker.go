@@ -121,34 +121,37 @@ func (w *Worker) DisplaySondesList() {
 }
 
 func (w *Worker) Run() error {
-	ch := make(chan *Sonde)
-	var errorsSondes []*SondeError
+	chSonde := make(chan *Sonde)
+	var hashErrSonde map[string]*SondeError = make(map[string]*SondeError)
 
 	for {
 		for _, sonde := range w.sondes {
 			if time.Now().After(sonde.NextExecution) {
 				time.Sleep(time.Millisecond * time.Duration((100 / len(w.sondes))))
-				go sonde.Check(ch)
+				go sonde.Check(chSonde)
 				go func() {
-					sonde := <-ch
+					sonde := <-chSonde
 
-					lastError := ""
-					onErrorSince := time.Time{}
-					for i, sondeError := range errorsSondes {
-						if sondeError.FileName == sonde.FileName {
-							lastError = sondeError.LastError
-							onErrorSince = sondeError.OnErrorSince
-							errorsSondes = append(errorsSondes[:i], errorsSondes[i+1:]...)
-							break
+					fmt.Printf("Sonde %s\n", sonde.Name)
+
+					// Détection des erreurs qui ont disparu
+					for hash, oldSerr := range hashErrSonde {
+						if oldSerr.FileName == sonde.FileName && oldSerr.IsErrorSolved(sonde.Errors) {
+							delete(hashErrSonde, hash)
+							oldSerr.DisplayResolvedError(sonde)
+							fmt.Printf("Erreur résolue : %s\n", oldSerr.Error)
 						}
 					}
 
-					if sonde.LastStatus != ErrNone {
-						sondeError := NewSondeError(sonde)
-						errorsSondes = append(errorsSondes, sondeError)
+					// On ajoute les nouvelles erreurs
+					for _, sondeError := range sonde.Errors {
+						if hashErrSonde[sondeError.Hash] == nil {
+							hashErrSonde[sondeError.Hash] = sondeError
+							sondeError.DisplayNewError(sonde)
+							fmt.Printf("Nouvelle erreur : %s\n", sondeError.Error)
+						}
 					}
 
-					sonde.DisplayInformations(lastError, onErrorSince)
 				}()
 
 			}

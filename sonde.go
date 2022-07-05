@@ -4,22 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
-)
-
-type Errors int64
-
-const (
-	ErrNone        Errors = iota
-	ErrNoOccurence        = 1
-	ErrServError          = 2
-	ErrDelay              = 3
-	ErrNoIndex            = 4
 )
 
 type Sonde struct {
@@ -32,18 +21,17 @@ type Sonde struct {
 	Index             bool
 	LastHttpCode      int
 	LastResponseDelay float64
-	LastStatus        Errors
-	LastError         string
-	LastErrorTime     time.Time
-	OnErrorSince      time.Time
 	NextExecution     time.Time
+	Errors            []*SondeError
 }
 
 /**
  * Check if everything is OK
  */
-func (sonde *Sonde) Check(ch chan *Sonde) {
+func (sonde *Sonde) Check(chSonde chan *Sonde) {
 	sonde.NextExecution = time.Now().Add(sonde.DelayMinute * time.Minute)
+
+	var sondeErrors []*SondeError
 
 	client := &http.Client{
 		Timeout: time.Second * 10,
@@ -55,11 +43,8 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 
 	// Erreur lors de l'appel au serveur
 	if err_ != nil {
-		sonde.LastStatus = ErrServError
-		sonde.LastError = err_.Error()
-		sonde.LastErrorTime = time.Now()
-		ch <- sonde
-		return
+		sondeErrorSrv := NewSondeError(sonde.FileName, ErrServError, err_.Error(), time.Now())
+		sondeErrors = append(sondeErrors, sondeErrorSrv)
 	}
 
 	defer res.Body.Close()
@@ -71,26 +56,14 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 
 	// Code HTTP invalide
 	if res.StatusCode != 200 {
-		sonde.LastStatus = ErrServError
-		sonde.LastError = fmt.Sprintf("Reponse code : %d", res.StatusCode)
-		sonde.LastErrorTime = time.Now()
-		if sonde.OnErrorSince.IsZero() {
-			sonde.OnErrorSince = time.Now()
-		}
-		ch <- sonde
-		return
+		sondeErrorStatus := NewSondeError(sonde.FileName, ErrServError, fmt.Sprintf("Reponse code : %d", res.StatusCode), time.Now())
+		sondeErrors = append(sondeErrors, sondeErrorStatus)
 	}
 
 	// Hors délai attendu pour la réponse
 	if responseTime > float64(sonde.Timeout) {
-		sonde.LastStatus = ErrDelay
-		sonde.LastError = fmt.Sprintf("Reponse duration too hight %ds vs %fs", sonde.Timeout, responseTime)
-		sonde.LastErrorTime = time.Now()
-		if sonde.OnErrorSince.IsZero() {
-			sonde.OnErrorSince = time.Now()
-		}
-		ch <- sonde
-		return
+		sondeErrorResponse := NewSondeError(sonde.FileName, ErrDelay, fmt.Sprintf("Reponse duration too hight %ds vs %fs", sonde.Timeout, responseTime), time.Now())
+		sondeErrors = append(sondeErrors, sondeErrorResponse)
 	}
 
 	// Vérification de la présence du texte dans la réponse
@@ -98,62 +71,49 @@ func (sonde *Sonde) Check(ch chan *Sonde) {
 	reader := bufio.NewReader(res.Body)
 	hasSearchContent := false
 	hasNoIndex := false
+	hasFoundCloseHead := false
 
 	var validNoIndex = regexp.MustCompile(`\<meta[ ]+name=["|']robots["|'][ ]+content=["|'].*noindex.*["|']`)
+	var validCloseHead = regexp.MustCompile(`\<\/head\>`)
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			break
 		}
+
 		if strings.Contains(line, sonde.Search) {
 			hasSearchContent = true
 		}
+
+		if validCloseHead.MatchString(line) {
+			hasFoundCloseHead = true
+		}
+
 		if validNoIndex.MatchString(line) {
 			hasNoIndex = true
 		}
 
-		if hasNoIndex && hasSearchContent {
+		if (hasNoIndex || hasFoundCloseHead) && hasSearchContent {
 			break
 		}
 	}
 	if !hasSearchContent {
-		sonde.LastStatus = ErrNoOccurence
-		sonde.LastError = "No occurence for : " + sonde.Search
-		sonde.LastErrorTime = time.Now()
-		if sonde.OnErrorSince.IsZero() {
-			sonde.OnErrorSince = time.Now()
-		}
-		ch <- sonde
-		return
+		sondeErrorSearch := NewSondeError(sonde.FileName, ErrNoOccurence, fmt.Sprintf("No occurence : %s ", sonde.Search), time.Now())
+		sondeErrors = append(sondeErrors, sondeErrorSearch)
 	}
 	if hasNoIndex && sonde.Index {
-		sonde.LastStatus = ErrNoIndex
-		sonde.LastError = "No index found"
-		sonde.LastErrorTime = time.Now()
-		if sonde.OnErrorSince.IsZero() {
-			sonde.OnErrorSince = time.Now()
-		}
-		ch <- sonde
-		return
+		sondeErrorNoIndex := NewSondeError(sonde.FileName, ErrNoIndex, "No index found", time.Now())
+		sondeErrors = append(sondeErrors, sondeErrorNoIndex)
 	}
 
 	if !sonde.Index && !hasNoIndex {
-		sonde.LastStatus = ErrNoIndex
-		sonde.LastError = "Index found but not expected"
-		sonde.LastErrorTime = time.Now()
-		if sonde.OnErrorSince.IsZero() {
-			sonde.OnErrorSince = time.Now()
-		}
-		ch <- sonde
-		return
+		sondeErrorNoIndexExpected := NewSondeError(sonde.FileName, ErrNoIndex, "Index found but not expected", time.Now())
+		sondeErrors = append(sondeErrors, sondeErrorNoIndexExpected)
 	}
 
-	sonde.LastStatus = ErrNone
-	sonde.LastError = ""
-	sonde.OnErrorSince = time.Time{}
-
-	ch <- sonde
+	sonde.Errors = sondeErrors
+	chSonde <- sonde
 }
 
 func (sonde *Sonde) Update(s *Sonde) {
@@ -165,34 +125,7 @@ func (sonde *Sonde) Update(s *Sonde) {
 	sonde.Index = s.Index
 	sonde.LastHttpCode = s.LastHttpCode
 	sonde.LastResponseDelay = s.LastResponseDelay
-	sonde.LastStatus = s.LastStatus
-	sonde.LastError = s.LastError
-	sonde.LastErrorTime = s.LastErrorTime
 	sonde.NextExecution = s.NextExecution
-}
-
-/**
-Display the sonde information
-*/
-func (sonde *Sonde) DisplayInformations(lasError string, lastErrorTime time.Time) {
-
-	if sonde.LastStatus != ErrNone {
-		file, err := os.OpenFile("sondes.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			fmt.Println("Error opening file:", err)
-			return
-		}
-		defer file.Close()
-		fmt.Fprintf(file, "[%s] [BAD] %s : %s (web %s) \n", time.Now().Format("2006-01-02 15:04:05"), sonde.Name, sonde.LastError, sonde.Url)
-	} else if sonde.LastStatus == ErrNone && lasError != "" {
-		file, err := os.OpenFile("sondes.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			fmt.Println("Error opening file:", err)
-			return
-		}
-		defer file.Close()
-		fmt.Fprintf(file, "[%s] [GOOD] %s : %s (web %s) error duration : %fm\n", time.Now().Format("2006-01-02 15:04:05"), sonde.Name, lasError, sonde.Url, time.Since(lastErrorTime).Minutes())
-	}
 }
 
 /**
