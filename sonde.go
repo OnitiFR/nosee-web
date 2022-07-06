@@ -11,13 +11,25 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+type Duration struct {
+	time.Duration
+}
+
+// UnmarshalText is needed to satisfy the encoding.TextUnmarshaler interface
+func (d *Duration) UnmarshalText(text []byte) error {
+	var err error
+	d.Duration, err = time.ParseDuration(string(text))
+	return err
+}
+
 type Sonde struct {
 	FileName          string
 	Name              string
 	Url               string
 	Search            string
-	Timeout           int
-	DelayMinute       time.Duration
+	Timeout           Duration
+	WarnTime          Duration
+	Delay             Duration
 	Index             bool
 	LastHttpCode      int
 	LastResponseDelay float64
@@ -29,12 +41,14 @@ type Sonde struct {
  * Check if everything is OK
  */
 func (sonde *Sonde) Check(chSonde chan *Sonde) {
-	sonde.NextExecution = time.Now().Add(sonde.DelayMinute * time.Minute)
+	sonde.NextExecution = time.Now().Add(sonde.Delay.Duration)
+
+	fmt.Printf("Checking %s %s\n", sonde.Name, sonde.NextExecution.Format("2006-01-02 15:04:05"))
 
 	var sondeErrors []*SondeError
 
 	client := &http.Client{
-		Timeout: time.Second * 10,
+		Timeout: sonde.Timeout.Duration,
 	}
 
 	start := time.Now()
@@ -61,8 +75,8 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 	}
 
 	// Hors délai attendu pour la réponse
-	if responseTime > float64(sonde.Timeout) {
-		sondeErrorResponse := NewSondeError(sonde.FileName, ErrDelay, fmt.Sprintf("Reponse duration too hight %ds vs %fs", sonde.Timeout, responseTime), time.Now())
+	if responseTime > sonde.WarnTime.Duration.Seconds() {
+		sondeErrorResponse := NewSondeError(sonde.FileName, ErrDelay, fmt.Sprintf("Reponse duration too hight %fs vs %fs", sonde.WarnTime.Duration.Seconds(), responseTime), time.Now())
 		sondeErrors = append(sondeErrors, sondeErrorResponse)
 	}
 
@@ -121,7 +135,7 @@ func (sonde *Sonde) Update(s *Sonde) {
 	sonde.Url = s.Url
 	sonde.Search = s.Search
 	sonde.Timeout = s.Timeout
-	sonde.DelayMinute = s.DelayMinute
+	sonde.Delay = s.Delay
 	sonde.Index = s.Index
 	sonde.LastHttpCode = s.LastHttpCode
 	sonde.LastResponseDelay = s.LastResponseDelay
@@ -132,6 +146,7 @@ func (sonde *Sonde) Update(s *Sonde) {
  * Load a sonde from a file
  */
 func LoadFromToml(fileSonde string) (*Sonde, error) {
+	fmt.Printf("Loading sonde from %s\n", fileSonde)
 	var sonde *Sonde
 	_, err := toml.DecodeFile(fileSonde, &sonde)
 

@@ -10,11 +10,20 @@ const Version = "0.0.1"
 func main() {
 	dirSondes := flag.String("d", "", "Directory with sondes")
 	version := flag.Bool("v", false, "Print version")
+	oldNoseeSondesDirectory := flag.String("c", "", "Duplicate old nosee sondes - abs path")
 
 	flag.Parse()
 
 	if *version {
 		fmt.Println(Version)
+		return
+	}
+
+	if *oldNoseeSondesDirectory != "" {
+		err := DuplicateSondes(*oldNoseeSondesDirectory)
+		if err != nil {
+			panic(err)
+		}
 		return
 	}
 
