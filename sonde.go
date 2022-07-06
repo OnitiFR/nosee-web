@@ -61,6 +61,11 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 		sondeErrors = append(sondeErrors, sondeErrorSrv)
 	}
 
+	// Si le serveur n'a pas répondu
+	if res == nil {
+		return
+	}
+
 	defer res.Body.Close()
 
 	responseTime := time.Since(start).Seconds()
