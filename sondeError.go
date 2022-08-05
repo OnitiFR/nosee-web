@@ -16,9 +16,17 @@ const (
 	ErrNoIndex                      = "no index"
 )
 
+type SondeErrorLevel string
+
+const (
+	ErrLvlwarnning = "warnning"
+	ErrLvlcritical = "critical"
+)
+
 type SondeError struct {
 	FileName     string
 	Status       SondeErrorStatus
+	ErrLvl       SondeErrorLevel
 	Error        string
 	OnErrorSince time.Time
 	Hash         string
@@ -62,10 +70,11 @@ func getLogFile() *os.File {
 	return file
 }
 
-func NewSondeError(FileName string, Status SondeErrorStatus, Error string, OnErrorSince time.Time) *SondeError {
+func NewSondeError(FileName string, Status SondeErrorStatus, ErrLvl SondeErrorLevel, Error string, OnErrorSince time.Time) *SondeError {
 	return &SondeError{
 		FileName:     FileName,
 		Status:       Status,
+		ErrLvl:       ErrLvl,
 		Error:        Error,
 		OnErrorSince: OnErrorSince,
 		Hash:         FileName + Error,
