@@ -5,20 +5,26 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 )
 
 type Worker struct {
-	sondes    []*Sonde
+	sondes    map[string]*Sonde
+	errors    map[string]*SondeError
 	dirSondes string
+	mutex     *sync.Mutex
 }
 
 /**
 * Initial load of sondes
  */
 func (w *Worker) InitialLoadSondes() error {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
 	if _, err := os.Stat(w.dirSondes); err != nil {
 		return err
 	}
@@ -27,7 +33,6 @@ func (w *Worker) InitialLoadSondes() error {
 	if err != nil {
 		return err
 	}
-	sondes := make([]*Sonde, 0)
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".toml") {
 			continue
@@ -37,19 +42,28 @@ func (w *Worker) InitialLoadSondes() error {
 		if err != nil {
 			return err
 		}
-
-		sondes = append(sondes, sonde)
+		w.sondes[sonde.FileName] = sonde
 	}
-
-	w.sondes = sondes
 
 	w.DisplaySondesList()
 
 	return nil
 }
 
+func (w *Worker) AppendSonde(sonde *Sonde) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	w.sondes[sonde.FileName] = sonde
+}
+
+func (w *Worker) RemoveSonde(filename string) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	delete(w.sondes, filename)
+}
+
 /**
-* Observe the directory for update / create /remove sondes
+* Observe le dossier des sondes pour détecter les ajouts et suppressions de fichiers
  */
 func (w *Worker) ObserveSondeDir() {
 	watcher, err := fsnotify.NewWatcher()
@@ -70,12 +84,7 @@ func (w *Worker) ObserveSondeDir() {
 				}
 
 				if event.Op == fsnotify.Remove {
-					for i, sonde := range w.sondes {
-						if sonde.FileName == event.Name {
-							w.sondes = append(w.sondes[:i], w.sondes[i+1:]...)
-							break
-						}
-					}
+					w.RemoveSonde(event.Name)
 					fmt.Printf("Sonde %s supprimée\n", event.Name)
 					w.DisplaySondesList()
 				} else {
@@ -87,13 +96,16 @@ func (w *Worker) ObserveSondeDir() {
 					hasBeenUpdated := false
 					for _, sondeExist := range w.sondes {
 						if sondeExist.FileName == event.Name {
+							w.mutex.Lock()
 							sondeExist.Update(sonde)
+							w.mutex.Unlock()
+
 							hasBeenUpdated = true
 							break
 						}
 					}
 					if !hasBeenUpdated {
-						w.sondes = append(w.sondes, sonde)
+						w.AppendSonde(sonde)
 					}
 					fmt.Printf("Sonde %s ajoutée ou mise à jour\n", sonde.Name)
 					w.DisplaySondesList()
@@ -113,6 +125,9 @@ func (w *Worker) ObserveSondeDir() {
 	<-done
 }
 
+/*
+* Affiche la liste des sondes chargées
+ */
 func (w *Worker) DisplaySondesList() {
 	fmt.Println("Liste des sondes surveillées :")
 	for _, sonde := range w.sondes {
@@ -120,39 +135,56 @@ func (w *Worker) DisplaySondesList() {
 	}
 }
 
-func (w *Worker) Run() error {
-	chSonde := make(chan *Sonde)
-	var hashErrSonde map[string]*SondeError = make(map[string]*SondeError)
-	defer close(chSonde)
-
+/*
+* Go routine qui écoute le channel des sondes
+* Afin de traiter les nouvelles erreurs ou les erreurs résolues
+ */
+func (w *Worker) ListenChanSonde(chSonde chan *Sonde) {
 	for {
-		for _, sonde := range w.sondes {
-			if time.Now().After(sonde.NextExecution) {
-				time.Sleep(time.Millisecond * time.Duration((100 / len(w.sondes))))
-				go sonde.Check(chSonde)
-				go func() {
-					sonde := <-chSonde
-					// Détection des erreurs qui ont disparu
-					for hash, oldSerr := range hashErrSonde {
-						if oldSerr.FileName == sonde.FileName && oldSerr.IsErrorSolved(sonde.Errors) {
-							delete(hashErrSonde, hash)
-							oldSerr.DisplayResolvedError(sonde)
-						}
-					}
-
-					// On ajoute les nouvelles erreurs
-					for _, sondeError := range sonde.Errors {
-						if hashErrSonde[sondeError.Hash] == nil {
-							hashErrSonde[sondeError.Hash] = sondeError
-							sondeError.DisplayNewError(sonde)
-						}
-					}
-
-				}()
-
+		sonde := <-chSonde
+		// Détection des erreurs qui ont disparu
+		for hash, oldSerr := range w.errors {
+			if oldSerr.FileName == sonde.FileName && oldSerr.IsErrorSolved(sonde.Errors) {
+				delete(w.errors, hash)
+				oldSerr.DisplayResolvedError(sonde)
 			}
 		}
 
+		// On ajoute les nouvelles erreurs
+		for _, sondeError := range sonde.Errors {
+			if w.errors[sondeError.Hash] == nil {
+				w.errors[sondeError.Hash] = sondeError
+				sondeError.DisplayNewError(sonde)
+			}
+		}
+	}
+}
+
+/*
+* Lance le check sur toutes les sondes
+ */
+func (w *Worker) RunAllCheck(chSonde chan *Sonde) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+	for _, sonde := range w.sondes {
+		if time.Now().After(sonde.NextExecution) {
+			time.Sleep(time.Millisecond * time.Duration((100 / len(w.sondes))))
+			go sonde.Check(chSonde)
+		}
+	}
+}
+
+/*
+* Point d'entrée du worker
+ */
+func (w *Worker) Run() error {
+	chSonde := make(chan *Sonde)
+	defer close(chSonde)
+
+	go w.ListenChanSonde(chSonde)
+
+	for {
+		w.RunAllCheck(chSonde)
 		time.Sleep(time.Second * 1)
 	}
 }
@@ -160,5 +192,8 @@ func (w *Worker) Run() error {
 func NewWorker(dirSondes string) *Worker {
 	return &Worker{
 		dirSondes: dirSondes,
+		mutex:     &sync.Mutex{},
+		sondes:    make(map[string]*Sonde),
+		errors:    make(map[string]*SondeError),
 	}
 }

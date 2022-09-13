@@ -52,13 +52,9 @@ func (s *SondeError) DisplayResolvedError(sonde *Sonde) {
 	fmt.Fprintf(file, "[%s] [GOOD] %s : %s (web %s) error duration : %fm\n", time.Now().Format("2006-01-02 15:04:05"), sonde.Name, s.Error, sonde.Url, time.Since(s.OnErrorSince).Minutes())
 }
 
-func (s *SondeError) IsErrorSolved(errors []*SondeError) bool {
-	for _, err := range errors {
-		if s.Hash == err.Hash {
-			return false
-		}
-	}
-	return true
+func (s *SondeError) IsErrorSolved(errors map[string]*SondeError) bool {
+	_, ok := errors[s.Error]
+	return ok
 }
 
 func getLogFile() *os.File {

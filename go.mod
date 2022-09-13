@@ -1,4 +1,4 @@
-module github.com/Hy0sh/go-wp-sonde
+module github.com/Hy0sh/go-sonde-wp
 
 go 1.17
 

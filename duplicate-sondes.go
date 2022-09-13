@@ -33,8 +33,11 @@ type NewSondeToml struct {
 	Index    bool
 }
 
-func (s *OldSondeNosee) createTomlFile() {
-	destDir := "/home/francois/Bureau/sondes"
+/*
+Create a new toml file from an old nosee sonde
+*/
+func (s *OldSondeNosee) createTomlFile(destDir string) {
+
 	arguments := strings.Split(s.Arguments, " ")
 	search := strings.Trim(strings.Join(arguments[1:], " "), "'")
 
@@ -58,7 +61,10 @@ func (s *OldSondeNosee) createTomlFile() {
 	toml.NewEncoder(f).Encode(newSonde)
 }
 
-func DuplicateSondes(oldNoseeSondesDirectory string) error {
+/*
+* Duplicate old nosee sondes
+ */
+func DuplicateSondes(oldNoseeSondesDirectory string, destDir string) error {
 	if _, err := os.Stat(oldNoseeSondesDirectory); err != nil {
 		return err
 	}
@@ -87,8 +93,7 @@ func DuplicateSondes(oldNoseeSondesDirectory string) error {
 	}
 
 	for _, oldSonde := range oldSondes {
-		// fmt.Printf("%+v\n", oldSonde)
-		oldSonde.createTomlFile()
+		oldSonde.createTomlFile(destDir)
 	}
 
 	return nil

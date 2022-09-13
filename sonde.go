@@ -34,7 +34,7 @@ type Sonde struct {
 	LastHttpCode      int
 	LastResponseDelay float64
 	NextExecution     time.Time
-	Errors            []*SondeError
+	Errors            map[string]*SondeError
 }
 
 /**
@@ -43,10 +43,13 @@ type Sonde struct {
 func (sonde *Sonde) Check(chSonde chan *Sonde) {
 	sonde.NextExecution = time.Now().Add(sonde.Delay.Duration)
 
-	var sondeErrors []*SondeError
+	sondeErrors := make(map[string]*SondeError)
 
 	client := &http.Client{
 		Timeout: sonde.Timeout.Duration,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
 	}
 
 	start := time.Now()
@@ -56,7 +59,7 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 	// Erreur lors de l'appel au serveur
 	if err_ != nil {
 		sondeErrorSrv := NewSondeError(sonde.FileName, ErrServError, ErrLvlcritical, err_.Error(), time.Now())
-		sondeErrors = append(sondeErrors, sondeErrorSrv)
+		sondeErrors[sondeErrorSrv.Error] = sondeErrorSrv
 	}
 
 	// Si le serveur n'a pas répondu
@@ -74,13 +77,13 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 	// Code HTTP invalide
 	if res.StatusCode != 200 {
 		sondeErrorStatus := NewSondeError(sonde.FileName, ErrServError, ErrLvlcritical, fmt.Sprintf("Reponse code : %d", res.StatusCode), time.Now())
-		sondeErrors = append(sondeErrors, sondeErrorStatus)
+		sondeErrors[sondeErrorStatus.Error] = sondeErrorStatus
 	}
 
 	// Hors délai attendu pour la réponse
 	if responseTime > sonde.WarnTime.Duration.Seconds() {
 		sondeErrorResponse := NewSondeError(sonde.FileName, ErrDelay, ErrLvlwarnning, fmt.Sprintf("Reponse duration too hight %fs vs %fs", sonde.WarnTime.Duration.Seconds(), responseTime), time.Now())
-		sondeErrors = append(sondeErrors, sondeErrorResponse)
+		sondeErrors[sondeErrorResponse.Error] = sondeErrorResponse
 	}
 
 	// Vérification de la présence du texte dans la réponse
@@ -117,16 +120,16 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 	}
 	if !hasSearchContent {
 		sondeErrorSearch := NewSondeError(sonde.FileName, ErrNoOccurence, ErrLvlcritical, fmt.Sprintf("No occurence : %s ", sonde.Search), time.Now())
-		sondeErrors = append(sondeErrors, sondeErrorSearch)
+		sondeErrors[sondeErrorSearch.Error] = sondeErrorSearch
 	}
 	if hasNoIndex && sonde.Index {
 		sondeErrorNoIndex := NewSondeError(sonde.FileName, ErrNoIndex, ErrLvlwarnning, "No index found", time.Now())
-		sondeErrors = append(sondeErrors, sondeErrorNoIndex)
+		sondeErrors[sondeErrorNoIndex.Error] = sondeErrorNoIndex
 	}
 
 	if !sonde.Index && !hasNoIndex {
 		sondeErrorNoIndexExpected := NewSondeError(sonde.FileName, ErrNoIndex, ErrLvlwarnning, "Index found but not expected", time.Now())
-		sondeErrors = append(sondeErrors, sondeErrorNoIndexExpected)
+		sondeErrors[sondeErrorNoIndexExpected.Error] = sondeErrorNoIndexExpected
 	}
 
 	sonde.Errors = sondeErrors
