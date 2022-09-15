@@ -1,0 +1,7 @@
+Name = "www.google.com"
+Url = "https://www.google.com/"
+Search = "Recherche Google"
+Timeout = "20s"
+WarnTime = "1s"
+Delay = "1m"
+Index = true

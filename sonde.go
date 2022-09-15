@@ -7,8 +7,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/BurntSushi/toml"
 )
 
 type Duration struct {
@@ -23,27 +21,32 @@ func (d *Duration) UnmarshalText(text []byte) error {
 }
 
 type Sonde struct {
-	FileName          string
-	Name              string
-	Url               string
-	Search            string
-	Timeout           Duration
-	WarnTime          Duration
-	Delay             Duration
-	Index             bool
-	LastHttpCode      int
-	LastResponseDelay float64
-	NextExecution     time.Time
-	Errors            map[string]*SondeError
+	FileName           string
+	Name               string
+	Url                string
+	Search             string
+	Timeout            Duration
+	WarnTime           Duration
+	Delay              Duration
+	Index              bool
+	LastHttpCode       int
+	LastResponseDelay  float64
+	NextExecution      time.Time
+	Errors             map[SondeErrorStatus]*SondeError
+	CheckInteration    int
+	LastCheckDurations []float64 // in seconds only 5 last
 }
 
 /**
  * Check if everything is OK
  */
-func (sonde *Sonde) Check(chSonde chan *Sonde) {
-	sonde.NextExecution = time.Now().Add(sonde.Delay.Duration)
+func (sonde *Sonde) CheckAll() {
+	start := time.Now()
+	sonde.CheckInteration++
 
-	sondeErrors := make(map[string]*SondeError)
+	defer sonde.AfterCheck(start)
+
+	sonde.NextExecution = time.Now().Add(sonde.Delay.Duration)
 
 	client := &http.Client{
 		Timeout: sonde.Timeout.Duration,
@@ -52,14 +55,13 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 		},
 	}
 
-	start := time.Now()
-
 	res, err_ := client.Get(sonde.Url)
 
 	// Erreur lors de l'appel au serveur
 	if err_ != nil {
-		sondeErrorSrv := NewSondeError(sonde.FileName, ErrServError, ErrLvlcritical, err_.Error(), time.Now())
-		sondeErrors[sondeErrorSrv.Error] = sondeErrorSrv
+		sonde.DeclareError(ErrServError, ErrLvlcritical, err_.Error())
+	} else {
+		sonde.DeclareErrorResolved(ErrServError)
 	}
 
 	// Si le serveur n'a pas répondu
@@ -76,15 +78,20 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 
 	// Code HTTP invalide
 	if res.StatusCode != 200 {
-		sondeErrorStatus := NewSondeError(sonde.FileName, ErrServError, ErrLvlcritical, fmt.Sprintf("Reponse code : %d", res.StatusCode), time.Now())
-		sondeErrors[sondeErrorStatus.Error] = sondeErrorStatus
+		sonde.DeclareError(ErrServError, ErrLvlcritical, fmt.Sprintf("Reponse code : %d", res.StatusCode))
+	} else {
+		sonde.DeclareErrorResolved(ErrServError)
 	}
 
 	// Hors délai attendu pour la réponse
 	if responseTime > sonde.WarnTime.Duration.Seconds() {
-		sondeErrorResponse := NewSondeError(sonde.FileName, ErrDelay, ErrLvlwarnning, fmt.Sprintf("Reponse duration too hight %fs vs %fs", sonde.WarnTime.Duration.Seconds(), responseTime), time.Now())
-		sondeErrors[sondeErrorResponse.Error] = sondeErrorResponse
+		sonde.DeclareError(ErrDelay, ErrLvlwarnning, fmt.Sprintf("Reponse duration too hight %fs vs %fs", sonde.WarnTime.Duration.Seconds(), responseTime))
+	} else {
+		sonde.DeclareErrorResolved(ErrDelay)
 	}
+
+	// Log to influxdb
+	go LogToNoseeInfluxDB(sonde.Url, sonde.FileName, "response_time", responseTime)
 
 	// Vérification de la présence du texte dans la réponse
 	// et de la présence ou non de la balise noindex
@@ -119,21 +126,83 @@ func (sonde *Sonde) Check(chSonde chan *Sonde) {
 		}
 	}
 	if !hasSearchContent {
-		sondeErrorSearch := NewSondeError(sonde.FileName, ErrNoOccurence, ErrLvlcritical, fmt.Sprintf("No occurence : %s ", sonde.Search), time.Now())
-		sondeErrors[sondeErrorSearch.Error] = sondeErrorSearch
+		sonde.DeclareError(ErrNoOccurence, ErrLvlcritical, fmt.Sprintf("No occurence : %s ", sonde.Search))
+	} else {
+		sonde.DeclareErrorResolved(ErrNoOccurence)
 	}
+
 	if hasNoIndex && sonde.Index {
-		sondeErrorNoIndex := NewSondeError(sonde.FileName, ErrNoIndex, ErrLvlwarnning, "No index found", time.Now())
-		sondeErrors[sondeErrorNoIndex.Error] = sondeErrorNoIndex
+		sonde.DeclareError(ErrNoIndex, ErrLvlwarnning, "No index found")
+	} else {
+		sonde.DeclareErrorResolved(ErrNoIndex)
 	}
 
 	if !sonde.Index && !hasNoIndex {
-		sondeErrorNoIndexExpected := NewSondeError(sonde.FileName, ErrNoIndex, ErrLvlwarnning, "Index found but not expected", time.Now())
-		sondeErrors[sondeErrorNoIndexExpected.Error] = sondeErrorNoIndexExpected
+		sonde.DeclareError(ErrIndexNotExpected, ErrLvlwarnning, "Index found but not expected")
+	} else {
+		sonde.DeclareErrorResolved(ErrIndexNotExpected)
 	}
 
-	sonde.Errors = sondeErrors
-	chSonde <- sonde
+}
+
+func (sonde *Sonde) DeclareError(err SondeErrorStatus, lvl SondeErrorLevel, msg string) {
+	if sonde.Errors[err] == nil {
+		sonde.Errors[err] = NewSondeError(err, lvl, msg, time.Now(), sonde.CheckInteration)
+	}
+}
+
+func (sonde *Sonde) DeclareErrorResolved(err SondeErrorStatus) {
+	if sonde.Errors[err] != nil {
+		sonde.Errors[err].SetResolved()
+	}
+}
+
+func (sonde *Sonde) GetErrors() map[SondeErrorStatus]*SondeError {
+	return sonde.Errors
+}
+
+func (sonde *Sonde) AfterCheck(start time.Time) {
+	sonde.LastCheckDurations = append(sonde.LastCheckDurations, time.Since(start).Seconds())
+	if len(sonde.LastCheckDurations) > 5 {
+		sonde.LastCheckDurations = sonde.LastCheckDurations[1:]
+	}
+
+	keyToDel := []SondeErrorStatus{}
+	for key, err := range sonde.Errors {
+		if err.IsResolved() {
+			keyToDel = append(keyToDel, key)
+		}
+		// parraralize notifications
+		go sonde.Notify(err)
+	}
+
+	for _, key := range keyToDel {
+		delete(sonde.Errors, key)
+	}
+}
+
+func (sonde *Sonde) Notify(err *SondeError) {
+	// err is Critical or Warnning with 2 consecutive errors
+	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarnning && sonde.CheckInteration-err.CheckInteration >= 2)
+	// is not notified or is resolved
+	can_notify = can_notify && (!err.HasBeenNotified || err.IsResolved())
+
+	if can_notify {
+		// Slack notification
+		slackerr := NotifySlack(err.GetMessage(sonde), err.Solved)
+		noseeErr := NotifyNoseeConsole(sonde, err)
+		if slackerr != nil {
+			fmt.Println(slackerr)
+		}
+		if noseeErr != nil {
+			fmt.Println(noseeErr)
+		}
+		// every notifications is sent
+		if slackerr == nil && noseeErr == nil {
+			err.SetNotified()
+		}
+
+	}
 }
 
 func (sonde *Sonde) Update(s *Sonde) {
@@ -146,22 +215,4 @@ func (sonde *Sonde) Update(s *Sonde) {
 	sonde.LastHttpCode = s.LastHttpCode
 	sonde.LastResponseDelay = s.LastResponseDelay
 	sonde.NextExecution = s.NextExecution
-}
-
-/**
- * Load a sonde from a file
- */
-func LoadFromToml(fileSonde string) (*Sonde, error) {
-	fmt.Printf("Loading sonde from %s\n", fileSonde)
-	var sonde *Sonde
-	_, err := toml.DecodeFile(fileSonde, &sonde)
-
-	if err != nil {
-		return sonde, err
-	}
-
-	sonde.FileName = fileSonde
-	sonde.NextExecution = time.Now()
-
-	return sonde, err
 }
