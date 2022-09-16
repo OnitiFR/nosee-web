@@ -91,7 +91,7 @@ func (s *SondeError) GetNoseeDetail(sonde *Sonde) string {
 func (s *SondeError) GetMessage(sonde *Sonde) string {
 	message := fmt.Sprintf("[BAD] %s : %s (web %s) \n", sonde.Name, s.Subject, sonde.Url)
 	if s.IsResolved() {
-		message = fmt.Sprintf("[GOOD] %s : %s (web %s) error duration : %.2fm\n", sonde.Name, s.Subject, sonde.Url, time.Since(s.OnErrorSince).Minutes())
+		message = fmt.Sprintf("[GOOD] %s : %s (web %s) error duration : %s\n", sonde.Name, s.Subject, sonde.Url, time.Since(s.OnErrorSince))
 	}
 
 	return message
