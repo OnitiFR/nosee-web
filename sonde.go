@@ -35,66 +35,42 @@ type Sonde struct {
 	Errors             map[SondeErrorStatus]*SondeError
 	CheckInteration    int
 	LastCheckDurations []float64 // in seconds only 5 last
+	WarnLimit          int
 }
 
-/**
- * Check if everything is OK
- */
-func (sonde *Sonde) CheckAll() {
-	start := time.Now()
-	sonde.CheckInteration++
-
-	defer sonde.AfterCheck(start)
-
-	sonde.NextExecution = time.Now().Add(sonde.Delay.Duration)
-
-	client := &http.Client{
-		Timeout: sonde.Timeout.Duration,
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-		},
-	}
-
-	res, err_ := client.Get(sonde.Url)
-
-	// Erreur lors de l'appel au serveur
-	if err_ != nil {
-		sonde.DeclareError(ErrServError, ErrLvlcritical, err_.Error())
+func (sonde *Sonde) checkServError(err error) {
+	// error on http request
+	if err != nil {
+		sonde.DeclareError(ErrServError, ErrLvlcritical, err.Error(), "http request error")
 	} else {
 		sonde.DeclareErrorResolved(ErrServError)
 	}
+}
 
-	// Si le serveur n'a pas répondu
-	if res == nil {
-		return
-	}
-
-	defer res.Body.Close()
-
-	responseTime := time.Since(start).Seconds()
-
-	sonde.LastResponseDelay = responseTime
-	sonde.LastHttpCode = res.StatusCode
-
-	// Code HTTP invalide
+func (sonde *Sonde) checkHttpResponseCode(res http.Response) {
+	// http code is not 200
 	if res.StatusCode != 200 {
-		sonde.DeclareError(ErrServError, ErrLvlcritical, fmt.Sprintf("Reponse code : %d", res.StatusCode))
+		sonde.DeclareError(ErrServError, ErrLvlcritical, fmt.Sprintf("response code : %d", res.StatusCode), fmt.Sprintf("response code : %d", res.StatusCode))
 	} else {
 		sonde.DeclareErrorResolved(ErrServError)
 	}
+}
 
-	// Hors délai attendu pour la réponse
-	if responseTime > sonde.WarnTime.Duration.Seconds() {
-		sonde.DeclareError(ErrDelay, ErrLvlwarnning, fmt.Sprintf("Reponse duration too hight %fs vs %fs", sonde.WarnTime.Duration.Seconds(), responseTime))
+func (sonde *Sonde) checkHttpResponseTime() {
+	// response time is too long
+	if sonde.LastResponseDelay > sonde.WarnTime.Duration.Seconds() {
+		sonde.DeclareError(ErrDelay, ErrLvlwarning, fmt.Sprintf("response duration too high %.2fs vs %.2fs", sonde.WarnTime.Duration.Seconds(), sonde.LastResponseDelay), "response duration too high")
 	} else {
 		sonde.DeclareErrorResolved(ErrDelay)
 	}
 
 	// Log to influxdb
-	go LogToNoseeInfluxDB(sonde.Url, sonde.FileName, "response_time", responseTime)
+	go LogToNoseeInfluxDB(sonde.Name, "response_time", sonde.LastResponseDelay)
+}
 
-	// Vérification de la présence du texte dans la réponse
-	// et de la présence ou non de la balise noindex
+func (sonde *Sonde) checkContentAndIndex(res http.Response) {
+	// searching keywords in body
+	// checking index page
 	reader := bufio.NewReader(res.Body)
 	hasSearchContent := false
 	hasNoIndex := false
@@ -126,28 +102,64 @@ func (sonde *Sonde) CheckAll() {
 		}
 	}
 	if !hasSearchContent {
-		sonde.DeclareError(ErrNoOccurence, ErrLvlcritical, fmt.Sprintf("No occurence : %s ", sonde.Search))
+		sonde.DeclareError(ErrNoOccurence, ErrLvlcritical, fmt.Sprintf("no occurence : %s ", sonde.Search), "no occurence found")
 	} else {
 		sonde.DeclareErrorResolved(ErrNoOccurence)
 	}
 
 	if hasNoIndex && sonde.Index {
-		sonde.DeclareError(ErrNoIndex, ErrLvlwarnning, "No index found")
+		sonde.DeclareError(ErrNoIndex, ErrLvlwarning, "no index found", "no index found")
 	} else {
 		sonde.DeclareErrorResolved(ErrNoIndex)
 	}
 
 	if !sonde.Index && !hasNoIndex {
-		sonde.DeclareError(ErrIndexNotExpected, ErrLvlwarnning, "Index found but not expected")
+		sonde.DeclareError(ErrIndexNotExpected, ErrLvlwarning, "index found but not expected", "index found but not expected")
 	} else {
 		sonde.DeclareErrorResolved(ErrIndexNotExpected)
 	}
-
 }
 
-func (sonde *Sonde) DeclareError(err SondeErrorStatus, lvl SondeErrorLevel, msg string) {
+/**
+ * Check if everything is OK
+ */
+func (sonde *Sonde) CheckAll() {
+	start := time.Now()
+	sonde.CheckInteration++
+
+	defer sonde.AfterCheck(start)
+
+	sonde.NextExecution = time.Now().Add(sonde.Delay.Duration)
+
+	client := &http.Client{
+		Timeout: sonde.Timeout.Duration,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
+	res, err_ := client.Get(sonde.Url)
+	sonde.LastResponseDelay = time.Since(start).Seconds()
+
+	sonde.checkServError(err_)
+
+	// no body
+	if err_ != nil {
+		return
+	}
+
+	defer res.Body.Close()
+
+	sonde.LastHttpCode = res.StatusCode
+
+	sonde.checkHttpResponseCode(*res)
+	sonde.checkHttpResponseTime()
+	sonde.checkContentAndIndex(*res)
+}
+
+func (sonde *Sonde) DeclareError(err SondeErrorStatus, lvl SondeErrorLevel, msg string, subject string) {
 	if sonde.Errors[err] == nil {
-		sonde.Errors[err] = NewSondeError(err, lvl, msg, time.Now(), sonde.CheckInteration)
+		sonde.Errors[err] = NewSondeError(err, lvl, msg, subject, time.Now(), sonde.CheckInteration)
 	}
 }
 
@@ -182,8 +194,8 @@ func (sonde *Sonde) AfterCheck(start time.Time) {
 }
 
 func (sonde *Sonde) Notify(err *SondeError) {
-	// err is Critical or Warnning with 2 consecutive errors
-	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarnning && sonde.CheckInteration-err.CheckInteration >= 2)
+	// err is Critical or Warning with 2 consecutive errors
+	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarning && sonde.CheckInteration-err.CheckInteration >= sonde.WarnLimit)
 	// is not notified or is resolved
 	can_notify = can_notify && (!err.HasBeenNotified || err.IsResolved())
 
@@ -212,7 +224,4 @@ func (sonde *Sonde) Update(s *Sonde) {
 	sonde.Timeout = s.Timeout
 	sonde.Delay = s.Delay
 	sonde.Index = s.Index
-	sonde.LastHttpCode = s.LastHttpCode
-	sonde.LastResponseDelay = s.LastResponseDelay
-	sonde.NextExecution = s.NextExecution
 }

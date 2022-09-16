@@ -12,6 +12,7 @@ type Worker struct {
 	errors    map[string]*SondeError
 	dirSondes string
 	mutex     *sync.Mutex
+	WarnLimit int
 }
 
 func (w *Worker) CheckRequiredEnv() {

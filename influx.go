@@ -1,13 +1,24 @@
 package main
 
-func LogToNoseeInfluxDB(host string, probe string, key string, val float64) error {
+import (
+	"bytes"
+	"fmt"
+	"net/http"
+)
 
-	return nil
+func LogToNoseeInfluxDB(host string, measurement string, val float64) error {
 
-	// url := "http://localhost:8086/write"
-	// payload := fmt.Sprintf("db=nosee,host=%s,probe=%s value=%f", host, probe, val)
+	url := "http://localhost:8086/write?db=nosee"
 
-	// _, err := http.Post(url, "application/x-www-form-urlencoded", strings.NewReader(payload))
+	payload := fmt.Sprintf("%s,host=%s value=%f", measurement, host, val)
 
-	// return err
+	fmt.Printf("payload %s\n", payload)
+
+	res, err := http.Post(url, "text/plain", bytes.NewBuffer([]byte(payload)))
+
+	if res != nil {
+		defer res.Body.Close()
+	}
+
+	return err
 }

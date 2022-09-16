@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
-	"strings"
+	"time"
 )
 
 func NotifySlack(message string, resolved bool) error {
@@ -14,43 +17,50 @@ func NotifySlack(message string, resolved bool) error {
 	}
 	hook := os.Getenv("SONDE_SLACK_WEBHOOK_URL")
 
-	final_message := fmt.Sprintf("%s %s - %s", mark, message, "go-sonde-wp")
+	final_message := fmt.Sprintf("%s %s", mark, message)
 
-	payload := fmt.Sprintf(`{"text": "%s"}`, final_message)
+	payload_json := map[string]string{
+		"text": final_message,
+	}
 
-	_, err := http.Post(hook, "application/json", strings.NewReader(payload))
-	return err
+	payload, err := json.Marshal(payload_json)
+	if err != nil {
+		return err
+	}
+	res, errPost := http.Post(hook, "application/json", bytes.NewBuffer(payload))
+	if res != nil {
+		defer res.Body.Close()
+	}
+	return errPost
 
 }
 
-func NotifyNoseeConsole(sonde *Sonde, err *SondeError) error {
+func NotifyNoseeConsole(sonde *Sonde, sonde_err *SondeError) error {
 
-	return nil
+	nosee_url := os.Getenv("SONDE_NOSEE_URL")
+	payload_type := sonde_err.GetNoseeType()
+	subject := sonde_err.GetNoseeSubject(sonde)
+	details := sonde_err.GetNoseeDetail(sonde)
+	classes := fmt.Sprintf("%s", sonde_err.ErrLvl)
+	hostname := sonde.Url
+	nosee_srv := "sonde wp - Prod"
+	uniqueid := sonde_err.GetUuid()
+	datetime := time.Now().Format(time.RFC3339)
 
-	// url := os.Getenv("SONDE_NOSEE_URL")
-	// payload_type := "" // ?? je sais pas quoi mettre
-	// subject := ""      // ?? je sais pas quoi mettre
-	// details := err.GetMessage(sonde)
-	// classes := "" // ?? je sais pas quoi mettre
-	// hostname := sonde.Url
-	// nosee_srv := "" // ?? je sais pas quoi mettre
-	// uniqueid := ""  // ?? Si resolved je dois renvoyer le même uniqueid que pour le notify initial
-	// datetime := time.Now().Format("2006-01-02 15:04:05")
+	res, err := http.PostForm(nosee_url, url.Values{
+		"type":      {payload_type},
+		"subject":   {subject},
+		"details":   {details},
+		"classes":   {classes},
+		"hostname":  {hostname},
+		"nosee_srv": {nosee_srv},
+		"uniqueid":  {uniqueid},
+		"datetime":  {datetime},
+	})
 
-	// // post with content-Type multipart/form-data
-	// payload := &bytes.Buffer{}
-	// writer := multipart.NewWriter(payload)
-	// defer writer.Close()
-	// _ = writer.WriteField("payload_type", payload_type)
-	// _ = writer.WriteField("subject", subject)
-	// _ = writer.WriteField("details", details)
-	// _ = writer.WriteField("classes", classes)
-	// _ = writer.WriteField("hostname", hostname)
-	// _ = writer.WriteField("nosee_srv", nosee_srv)
-	// _ = writer.WriteField("uniqueid", uniqueid)
-	// _ = writer.WriteField("datetime", datetime)
+	if res != nil {
+		defer res.Body.Close()
+	}
 
-	// _, errPost := http.Post(url, writer.FormDataContentType(), payload)
-
-	// return errPost
+	return err
 }

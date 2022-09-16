@@ -9,6 +9,7 @@ const Version = "0.0.1"
 
 func main() {
 	dirSondes := flag.String("d", "", "Directory with sondes")
+	warnLimit := flag.Int("w", 2, "Number of warning before alert")
 	version := flag.Bool("v", false, "Print version")
 	oldNoseeSondesDirectory := flag.String("c", "", "Duplicate old nosee sondes - abs path")
 	destDir := flag.String("o", "", "Destination directory for new toml files - abs path")
@@ -45,6 +46,7 @@ func main() {
 	}
 
 	worker := NewWorker(*dirSondes)
+	worker.WarnLimit = *warnLimit
 
 	//check env
 	worker.CheckRequiredEnv()

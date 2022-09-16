@@ -33,8 +33,9 @@ func LoadFromToml(fileSonde string) (*Sonde, error) {
 	if err != nil {
 		return sonde, err
 	}
-
-	sonde.FileName = fileSonde
+	// get basename from absolute path
+	filename := fileSonde[strings.LastIndex(fileSonde, "/")+1:]
+	sonde.FileName = filename
 	sonde.NextExecution = time.Now()
 	sonde.Errors = make(map[SondeErrorStatus]*SondeError)
 
@@ -75,6 +76,7 @@ func (w *Worker) InitialLoadSondes() error {
 		if err != nil {
 			return err
 		}
+		sonde.WarnLimit = w.WarnLimit
 		w.sondes[sonde.FileName] = sonde
 	}
 
@@ -103,10 +105,10 @@ func (w *Worker) ObserveSondeDir() {
 				if !strings.HasSuffix(event.Name, ".toml") {
 					continue
 				}
-
+				filename := event.Name[strings.LastIndex(event.Name, "/")+1:]
 				if event.Op == fsnotify.Remove {
-					w.RemoveSonde(event.Name)
-					fmt.Printf("Sonde %s supprimée\n", event.Name)
+					w.RemoveSonde(filename)
+					fmt.Printf("Sonde %s supprimée\n", filename)
 					w.DisplaySondesList()
 				} else {
 					sonde, err := LoadFromToml(event.Name)
@@ -114,17 +116,10 @@ func (w *Worker) ObserveSondeDir() {
 						fmt.Println(err)
 						continue
 					}
-					hasBeenUpdated := false
-					for _, sondeExist := range w.sondes {
-						if sondeExist.FileName == event.Name {
-							w.mutex.Lock()
-							sondeExist.Update(sonde)
-							w.mutex.Unlock()
-							hasBeenUpdated = true
-							break
-						}
-					}
-					if !hasBeenUpdated {
+					if w.sondes[filename] != nil {
+						w.sondes[filename].Update(sonde)
+					} else {
+						sonde.WarnLimit = w.WarnLimit
 						w.AppendSonde(sonde)
 					}
 					fmt.Printf("Sonde %s ajoutée ou mise à jour\n", sonde.Name)

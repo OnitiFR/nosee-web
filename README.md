@@ -6,6 +6,7 @@ Temps de réponse, contenu du site, si le site est indexé, code HTTP.
 ### Options
 ``` text
   -c string Duplicate old nosee sondes - abs path
+  -w int Number of warning before alert
   -d string Directory with sondes
   -o string Destination directory for new toml files - abs path
   -t	Test mode - execute test part only
@@ -16,9 +17,8 @@ Temps de réponse, contenu du site, si le site est indexé, code HTTP.
 USR1 : débug des sondes en cours avec des informations sur leurs satus
 USR2 : renvoie la liste des go routines en cours
 ```
-kill -USR1 $(pidof go-sonde-wp)
-kill -USR2 $(pidof go-sonde-wp)
-
+- kill -USR1 $(pidof go-sonde-wp)
+- kill -USR2 $(pidof go-sonde-wp)
 
 ### Envs Requis
 SONDE_SLACK_WEBHOOK_URL
