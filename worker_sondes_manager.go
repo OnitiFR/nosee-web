@@ -74,6 +74,7 @@ func (w *Worker) InitialLoadSondes() error {
 
 		sonde, err := LoadFromToml(w.dirSondes + "/" + file.Name())
 		if err != nil {
+			NotifySlack(fmt.Sprintf("Erreur lors du chargement de la sonde %s : %s", file.Name(), err.Error()), false)
 			return err
 		}
 		sonde.WarnLimit = w.WarnLimit

@@ -19,6 +19,7 @@ func (w *Worker) CheckRequiredEnv() {
 	requieredEnv := []string{
 		"SONDE_SLACK_WEBHOOK_URL",
 		"SONDE_NOSEE_URL",
+		"SONDE_NOSEE_INFLUXDB_URL",
 	}
 	missingEnv := []string{}
 	for _, env := range requieredEnv {
@@ -37,9 +38,18 @@ func (w *Worker) CheckRequiredEnv() {
 func (w *Worker) RunAllCheck() {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+	sondesToCheck := []*Sonde{}
+
 	for _, sonde := range w.sondes {
 		if time.Now().After(sonde.NextExecution) {
-			time.Sleep(time.Millisecond * time.Duration((100 / len(w.sondes))))
+			sondesToCheck = append(sondesToCheck, sonde)
+		}
+	}
+	if len(sondesToCheck) > 0 {
+		// add x seconds between each check
+		intervalBetweenChecks := 30 / len(sondesToCheck)
+		for _, sonde := range sondesToCheck {
+			time.Sleep(time.Second * time.Duration(intervalBetweenChecks))
 			go sonde.CheckAll()
 		}
 	}
@@ -52,7 +62,7 @@ func (w *Worker) Run() error {
 
 	for {
 		w.RunAllCheck()
-		time.Sleep(time.Second * 1)
+		time.Sleep(time.Minute * 1)
 	}
 }
 

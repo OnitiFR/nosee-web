@@ -71,19 +71,15 @@ func (sonde *Sonde) checkHttpResponseTime() {
 func (sonde *Sonde) checkContentAndIndex(res http.Response) {
 	// searching keywords in body
 	// checking index page
-	reader := bufio.NewReader(res.Body)
+	scanner := bufio.NewScanner(res.Body)
 	hasSearchContent := false
 	hasNoIndex := false
 	hasFoundCloseHead := false
 
 	var validNoIndex = regexp.MustCompile(`\<meta[ ]+name=["|']robots["|'][ ]+content=["|'].*noindex.*["|']`)
 	var validCloseHead = regexp.MustCompile(`\<\/head\>`)
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			break
-		}
+	for scanner.Scan() {
+		line := scanner.Text()
 
 		if strings.Contains(line, sonde.Search) {
 			hasSearchContent = true
@@ -108,13 +104,13 @@ func (sonde *Sonde) checkContentAndIndex(res http.Response) {
 	}
 
 	if hasNoIndex && sonde.Index {
-		sonde.DeclareError(ErrNoIndex, ErrLvlwarning, "no index found", "no index found")
+		sonde.DeclareError(ErrNoIndex, ErrLvlwarning, "search engine indexing not allowed", "search engine indexing not allowed")
 	} else {
 		sonde.DeclareErrorResolved(ErrNoIndex)
 	}
 
 	if !sonde.Index && !hasNoIndex {
-		sonde.DeclareError(ErrIndexNotExpected, ErrLvlwarning, "index found but not expected", "index found but not expected")
+		sonde.DeclareError(ErrIndexNotExpected, ErrLvlwarning, "search engine indexing not expected", "search engine indexing not expected")
 	} else {
 		sonde.DeclareErrorResolved(ErrIndexNotExpected)
 	}
