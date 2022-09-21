@@ -35,7 +35,7 @@ func displayAllSondesStatus(worker *Worker) {
 		fmt.Printf("LastCheckDurations : %f\n", sonde.LastCheckDurations)
 		fmt.Printf("Actual Errors :\n")
 		for _, error := range sonde.Errors {
-			fmt.Printf(" %s - %s : %s\n", error.Status, error.ErrLvl, error.GetMessage(sonde))
+			fmt.Printf(" %s - %s - nb err: %d : %s\n", error.Status, error.ErrLvl, error.NbTimeErrors, error.GetMessage(sonde))
 		}
 		fmt.Printf("-----------------------------------------------------------\n")
 	}
