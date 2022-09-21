@@ -32,7 +32,7 @@ type SondeError struct {
 	Subject         string
 	Error           string
 	OnErrorSince    time.Time
-	CheckInteration int
+	NbTimeErrors    int
 	Solved          bool
 	HasBeenNotified bool
 }
@@ -97,15 +97,15 @@ func (s *SondeError) GetMessage(sonde *Sonde) string {
 	return message
 }
 
-func NewSondeError(Status SondeErrorStatus, ErrLvl SondeErrorLevel, Error string, Subject string, OnErrorSince time.Time, CheckInteration int) *SondeError {
+func NewSondeError(Status SondeErrorStatus, ErrLvl SondeErrorLevel, Error string, Subject string, OnErrorSince time.Time) *SondeError {
 	return &SondeError{
-		uuid:            uuid.New().String(),
-		Status:          Status,
-		ErrLvl:          ErrLvl,
-		Error:           Error,
-		Subject:         Subject,
-		OnErrorSince:    OnErrorSince,
-		CheckInteration: CheckInteration,
-		Solved:          false,
+		uuid:         uuid.New().String(),
+		Status:       Status,
+		ErrLvl:       ErrLvl,
+		Error:        Error,
+		Subject:      Subject,
+		OnErrorSince: OnErrorSince,
+		Solved:       false,
+		NbTimeErrors: 1,
 	}
 }

@@ -33,7 +33,6 @@ type Sonde struct {
 	LastResponseDelay  float64
 	NextExecution      time.Time
 	Errors             map[SondeErrorStatus]*SondeError
-	CheckInteration    int
 	LastCheckDurations []float64 // in seconds only 5 last
 	WarnLimit          int
 }
@@ -121,7 +120,6 @@ func (sonde *Sonde) checkContentAndIndex(res http.Response) {
  */
 func (sonde *Sonde) CheckAll() {
 	start := time.Now()
-	sonde.CheckInteration++
 
 	defer sonde.AfterCheck(start)
 
@@ -155,7 +153,9 @@ func (sonde *Sonde) CheckAll() {
 
 func (sonde *Sonde) DeclareError(err SondeErrorStatus, lvl SondeErrorLevel, msg string, subject string) {
 	if sonde.Errors[err] == nil {
-		sonde.Errors[err] = NewSondeError(err, lvl, msg, subject, time.Now(), sonde.CheckInteration)
+		sonde.Errors[err] = NewSondeError(err, lvl, msg, subject, time.Now())
+	} else {
+		sonde.Errors[err].NbTimeErrors++
 	}
 }
 
@@ -191,7 +191,7 @@ func (sonde *Sonde) AfterCheck(start time.Time) {
 
 func (sonde *Sonde) Notify(err *SondeError) {
 	// err is Critical or Warning with 2 consecutive errors
-	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarning && sonde.CheckInteration-err.CheckInteration >= sonde.WarnLimit)
+	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarning && err.NbTimeErrors >= sonde.WarnLimit)
 	// is not notified or is resolved
 	can_notify = can_notify && (!err.HasBeenNotified || err.IsResolved())
 
