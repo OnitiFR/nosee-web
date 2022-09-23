@@ -1,0 +1,13 @@
+[Unit]
+Description=next-gen Oniti supervision system
+After=network-online.target
+
+[Service]
+User=oniti
+ExecStart=/home/oniti/go/bin/go-wp-sonde -d /home/oniti/nosee/web/
+Type=simple
+Restart=on-failure
+EnvironmentFile=/home/oniti/.env.go-wp-sonde
+
+[Install]
+WantedBy=multi-user.target
