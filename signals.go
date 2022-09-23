@@ -30,9 +30,8 @@ func displayAllSondesStatus(worker *Worker) {
 		fmt.Printf("-----------------------------------------------------------\n")
 		fmt.Printf("%s url : %s\n", sonde.Name, sonde.Url)
 		fmt.Printf("LastHttpCode : %d\n", sonde.LastHttpCode)
-		fmt.Printf("LastResponseDelay : %f\n", sonde.LastResponseDelay)
+		fmt.Printf("LastResponseDelay : %s\n", sonde.LastResponseDelay)
 		fmt.Printf("NextExecution : %s\n", sonde.NextExecution.Format("2006-01-02 15:04:05"))
-		fmt.Printf("LastCheckDurations : %f\n", sonde.LastCheckDurations)
 		fmt.Printf("Actual Errors :\n")
 		for _, error := range sonde.Errors {
 			fmt.Printf(" %s - %s - nb err: %d : %s\n", error.Status, error.ErrLvl, error.NbTimeErrors, error.GetMessage(sonde))

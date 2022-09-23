@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -21,20 +22,19 @@ func (d *Duration) UnmarshalText(text []byte) error {
 }
 
 type Sonde struct {
-	FileName           string
-	Name               string
-	Url                string
-	Search             string
-	Timeout            Duration
-	WarnTime           Duration
-	Delay              Duration
-	Index              bool
-	LastHttpCode       int
-	LastResponseDelay  float64
-	NextExecution      time.Time
-	Errors             map[SondeErrorStatus]*SondeError
-	LastCheckDurations []float64 // in seconds only 5 last
-	WarnLimit          int
+	FileName          string
+	Name              string
+	Url               string
+	Search            string
+	Timeout           Duration
+	WarnTime          Duration
+	Delay             Duration
+	Index             bool
+	LastHttpCode      int
+	LastResponseDelay time.Duration
+	NextExecution     time.Time
+	Errors            map[SondeErrorStatus]*SondeError
+	WarnLimit         int
 }
 
 func (sonde *Sonde) checkServError(err error) {
@@ -46,19 +46,23 @@ func (sonde *Sonde) checkServError(err error) {
 	}
 }
 
-func (sonde *Sonde) checkHttpResponseCode(res http.Response) {
+func (sonde *Sonde) checkHttpResponseCode(res http.Response) error {
 	// http code is not 200
 	if res.StatusCode != 200 {
 		sonde.DeclareError(ErrServError, ErrLvlcritical, fmt.Sprintf("response code : %d", res.StatusCode), fmt.Sprintf("response code : %d", res.StatusCode))
-	} else {
-		sonde.DeclareErrorResolved(ErrServError)
+
+		return errors.New("response code not 200")
 	}
+
+	sonde.DeclareErrorResolved(ErrServError)
+	return nil
+
 }
 
 func (sonde *Sonde) checkHttpResponseTime() {
 	// response time is too long
-	if sonde.LastResponseDelay > sonde.WarnTime.Duration.Seconds() {
-		sonde.DeclareError(ErrDelay, ErrLvlwarning, fmt.Sprintf("response duration too high %.2fs vs %.2fs", sonde.WarnTime.Duration.Seconds(), sonde.LastResponseDelay), "response duration too high")
+	if sonde.LastResponseDelay > sonde.WarnTime.Duration {
+		sonde.DeclareError(ErrDelay, ErrLvlwarning, fmt.Sprintf("response duration too high %s vs %s", sonde.WarnTime.Duration, sonde.LastResponseDelay), "response duration too high")
 	} else {
 		sonde.DeclareErrorResolved(ErrDelay)
 	}
@@ -119,9 +123,8 @@ func (sonde *Sonde) checkContentAndIndex(res http.Response) {
  * Check if everything is OK
  */
 func (sonde *Sonde) CheckAll() {
-	start := time.Now()
 
-	defer sonde.AfterCheck(start)
+	defer sonde.AfterCheck()
 
 	sonde.NextExecution = time.Now().Add(sonde.Delay.Duration)
 
@@ -129,16 +132,21 @@ func (sonde *Sonde) CheckAll() {
 		Timeout: sonde.Timeout.Duration,
 		Transport: &http.Transport{
 			DisableKeepAlives: true,
+			MaxConnsPerHost:   1,
 		},
 	}
 
-	res, err_ := client.Get(sonde.Url)
-	sonde.LastResponseDelay = time.Since(start).Seconds()
+	defer client.CloseIdleConnections()
 
-	sonde.checkServError(err_)
+	start := time.Now()
+
+	res, err := client.Get(sonde.Url)
+	sonde.LastResponseDelay = time.Since(start)
+
+	sonde.checkServError(err)
 
 	// no body
-	if err_ != nil {
+	if err != nil {
 		return
 	}
 
@@ -146,7 +154,10 @@ func (sonde *Sonde) CheckAll() {
 
 	sonde.LastHttpCode = res.StatusCode
 
-	sonde.checkHttpResponseCode(*res)
+	err = sonde.checkHttpResponseCode(*res)
+	if err != nil {
+		return
+	}
 	sonde.checkHttpResponseTime()
 	sonde.checkContentAndIndex(*res)
 }
@@ -169,12 +180,7 @@ func (sonde *Sonde) GetErrors() map[SondeErrorStatus]*SondeError {
 	return sonde.Errors
 }
 
-func (sonde *Sonde) AfterCheck(start time.Time) {
-	sonde.LastCheckDurations = append(sonde.LastCheckDurations, time.Since(start).Seconds())
-	if len(sonde.LastCheckDurations) > 5 {
-		sonde.LastCheckDurations = sonde.LastCheckDurations[1:]
-	}
-
+func (sonde *Sonde) AfterCheck() {
 	keyToDel := []SondeErrorStatus{}
 	for key, err := range sonde.Errors {
 		if err.IsResolved() {
