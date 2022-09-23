@@ -14,6 +14,12 @@ import (
 func (w *Worker) AppendSonde(sonde *Sonde) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+	for _, s := range w.sondes {
+		if s.Name == sonde.Name || s.Url == sonde.Url {
+			NotifySlack(fmt.Sprintf("Erreur lors du chargement de la sonde %s : une sonde portant le même nom ou url existe déjà fichier : %s", sonde.FileName, s.FileName), false)
+			return
+		}
+	}
 	w.sondes[sonde.FileName] = sonde
 }
 
