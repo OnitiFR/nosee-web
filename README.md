@@ -17,8 +17,8 @@ Temps de réponse, contenu du site, si le site est indexé, code HTTP.
 USR1 : débug des sondes en cours avec des informations sur leurs satus
 USR2 : renvoie la liste des go routines en cours
 ```
-- kill -USR1 $(pidof go-sonde-wp)
-- kill -USR2 $(pidof go-sonde-wp)
+- kill -USR1 $(pidof go-wp-sonde)
+- kill -USR2 $(pidof go-wp-sonde)
 
 ### Envs Requis
 - SONDE_SLACK_WEBHOOK_URL
