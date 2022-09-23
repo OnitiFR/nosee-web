@@ -21,5 +21,6 @@ USR2 : renvoie la liste des go routines en cours
 - kill -USR2 $(pidof go-sonde-wp)
 
 ### Envs Requis
-SONDE_SLACK_WEBHOOK_URL
-SONDE_NOSEE_URL
+- SONDE_SLACK_WEBHOOK_URL
+- SONDE_NOSEE_URL
+- SONDE_NOSEE_INFLUXDB_URL
