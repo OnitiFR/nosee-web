@@ -219,11 +219,17 @@ func (sonde *Sonde) Notify(err *SondeError) {
 	}
 }
 
-func (sonde *Sonde) Update(s *Sonde) {
-	sonde.Name = s.Name
-	sonde.Url = s.Url
-	sonde.Search = s.Search
-	sonde.Timeout = s.Timeout
-	sonde.Delay = s.Delay
-	sonde.Index = s.Index
+func (sonde *Sonde) Update(s *Sonde) bool {
+	hasDifferances := sonde.Name != s.Name || sonde.Url != s.Url || sonde.Search != s.Search || sonde.Delay != s.Delay || sonde.Index != s.Index || sonde.Timeout != s.Timeout
+
+	if hasDifferances {
+		sonde.Name = s.Name
+		sonde.Url = s.Url
+		sonde.Search = s.Search
+		sonde.Timeout = s.Timeout
+		sonde.Delay = s.Delay
+		sonde.Index = s.Index
+	}
+
+	return hasDifferances
 }

@@ -28,7 +28,9 @@ func displayAllSondesStatus(worker *Worker) {
 	fmt.Println("Liste des sondes surveillées :")
 	for _, sonde := range worker.sondes {
 		fmt.Printf("-----------------------------------------------------------\n")
-		fmt.Printf("%s url : %s\n", sonde.Name, sonde.Url)
+		fmt.Printf("%s\n", sonde.Name)
+		fmt.Printf("Url : %s\n", sonde.Url)
+		fmt.Printf("Search : %s\n", sonde.Search)
 		fmt.Printf("LastHttpCode : %d\n", sonde.LastHttpCode)
 		fmt.Printf("LastResponseDelay : %s\n", sonde.LastResponseDelay)
 		fmt.Printf("NextExecution : %s\n", sonde.NextExecution.Format("2006-01-02 15:04:05"))

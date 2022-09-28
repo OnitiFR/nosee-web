@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -8,12 +9,9 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/fsnotify/fsnotify"
 )
 
 func (w *Worker) AppendSonde(sonde *Sonde) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
 	for _, s := range w.sondes {
 		if s.Name == sonde.Name || s.Url == sonde.Url {
 			NotifySlack(fmt.Sprintf("Erreur lors du chargement de la sonde %s : une sonde portant le même nom ou url existe déjà fichier : %s", sonde.FileName, s.FileName), false)
@@ -21,12 +19,19 @@ func (w *Worker) AppendSonde(sonde *Sonde) {
 		}
 	}
 	w.sondes[sonde.FileName] = sonde
+
+	if w.NotifySondeUpdate {
+		NotifySlack(fmt.Sprintf("La sonde %s a été ajoutée", sonde.Name), true)
+	}
 }
 
 func (w *Worker) RemoveSonde(filename string) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	sonde := w.sondes[filename]
 	delete(w.sondes, filename)
+
+	if w.NotifySondeUpdate {
+		NotifySlack(fmt.Sprintf("La sonde %s a été supprimée", sonde.Name), true)
+	}
 }
 
 /**
@@ -49,7 +54,7 @@ func LoadFromToml(fileSonde string) (*Sonde, error) {
 }
 
 /*
-* Affiche la liste des sondes chargées
+* Display sondes list
  */
 func (w *Worker) DisplaySondesList() {
 	fmt.Println("Liste des sondes surveillées :")
@@ -62,6 +67,44 @@ func (w *Worker) DisplaySondesList() {
 * Initial load of sondes
  */
 func (w *Worker) InitialLoadSondes() error {
+	fmt.Println("Chargement des sondes...")
+	err := w.ScanSondeDirectory()
+	if err == nil {
+		w.DisplaySondesList()
+	} else {
+		fmt.Printf("Aucune sonde chargée : %s\n", err.Error())
+
+	}
+
+	return err
+}
+
+/**
+* Observe sonde directory every 10 seconds
+ */
+func (w *Worker) ObserveSondeDir() {
+	// Activate sonde update Notification
+	w.NotifySondeUpdate = true
+
+	var running_errors = make(map[string]bool)
+	for {
+		err := w.ScanSondeDirectory()
+		if err != nil {
+			if _, ok := running_errors[err.Error()]; !ok {
+				NotifySlack(err.Error(), false)
+				running_errors[err.Error()] = true
+			}
+		} else {
+			running_errors = make(map[string]bool)
+		}
+		time.Sleep(10 * time.Second)
+	}
+}
+
+/**
+* scan directory in order to update sondes list
+ */
+func (w *Worker) ScanSondeDirectory() error {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 
@@ -73,6 +116,9 @@ func (w *Worker) InitialLoadSondes() error {
 	if err != nil {
 		return err
 	}
+
+	var filesSondes map[string]bool = make(map[string]bool)
+
 	for _, file := range files {
 		if file.IsDir() || !strings.HasSuffix(file.Name(), ".toml") {
 			continue
@@ -80,69 +126,29 @@ func (w *Worker) InitialLoadSondes() error {
 
 		sonde, err := LoadFromToml(w.dirSondes + "/" + file.Name())
 		if err != nil {
-			NotifySlack(fmt.Sprintf("Erreur lors du chargement de la sonde %s : %s", file.Name(), err.Error()), false)
-			return err
+			message := fmt.Sprintf("Erreur lors du chargement de la sonde %s : %s", file.Name(), err.Error())
+			return errors.New(message)
 		}
-		sonde.WarnLimit = w.WarnLimit
-		w.sondes[sonde.FileName] = sonde
+
+		// check if sonde already exists
+		if _, ok := w.sondes[sonde.FileName]; !ok {
+			sonde.WarnLimit = w.WarnLimit
+			w.AppendSonde(sonde)
+			filesSondes[sonde.FileName] = true
+		} else {
+			if w.sondes[sonde.FileName].Update(sonde) && w.NotifySondeUpdate {
+				NotifySlack(fmt.Sprintf("La sonde %s a été mise à jour", sonde.Name), true)
+			}
+			filesSondes[sonde.FileName] = true
+		}
 	}
 
-	w.DisplaySondesList()
+	// check if some sondes have been removed
+	for filename, _ := range w.sondes {
+		if _, ok := filesSondes[filename]; !ok {
+			w.RemoveSonde(filename)
+		}
+	}
 
 	return nil
-}
-
-/**
-* Observe le dossier des sondes pour détecter les ajouts et suppressions de fichiers
- */
-func (w *Worker) ObserveSondeDir() {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		panic(err)
-	}
-
-	defer watcher.Close()
-
-	done := make(chan bool)
-	go func() {
-		for {
-			select {
-			// watch for events
-			case event := <-watcher.Events:
-				if !strings.HasSuffix(event.Name, ".toml") {
-					continue
-				}
-				filename := event.Name[strings.LastIndex(event.Name, "/")+1:]
-				if event.Op == fsnotify.Remove {
-					w.RemoveSonde(filename)
-					fmt.Printf("Sonde %s supprimée\n", filename)
-					w.DisplaySondesList()
-				} else {
-					sonde, err := LoadFromToml(event.Name)
-					if err != nil {
-						fmt.Println(err)
-						continue
-					}
-					if w.sondes[filename] != nil {
-						w.sondes[filename].Update(sonde)
-					} else {
-						sonde.WarnLimit = w.WarnLimit
-						w.AppendSonde(sonde)
-					}
-					fmt.Printf("Sonde %s ajoutée ou mise à jour\n", sonde.Name)
-					w.DisplaySondesList()
-				}
-				// watch for errors
-			case err := <-watcher.Errors:
-				fmt.Println("ERROR", err)
-			}
-		}
-	}()
-
-	if err := watcher.Add(w.dirSondes); err != nil {
-		fmt.Println("ERROR", err)
-		panic(err)
-	}
-
-	<-done
 }

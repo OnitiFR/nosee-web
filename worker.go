@@ -8,11 +8,12 @@ import (
 )
 
 type Worker struct {
-	sondes    map[string]*Sonde
-	errors    map[string]*SondeError
-	dirSondes string
-	mutex     *sync.Mutex
-	WarnLimit int
+	sondes            map[string]*Sonde
+	errors            map[string]*SondeError
+	dirSondes         string
+	mutex             *sync.Mutex
+	WarnLimit         int
+	NotifySondeUpdate bool
 }
 
 func (w *Worker) CheckRequiredEnv() {
@@ -33,7 +34,7 @@ func (w *Worker) CheckRequiredEnv() {
 }
 
 /*
-* Lance le check sur toutes les sondes
+* Run all checks
  */
 func (w *Worker) RunAllCheck() {
 	w.mutex.Lock()
@@ -56,10 +57,9 @@ func (w *Worker) RunAllCheck() {
 }
 
 /*
-* Point d'entrée du worker
+* Enter point of the worker
  */
 func (w *Worker) Run() error {
-
 	for {
 		w.RunAllCheck()
 		time.Sleep(time.Minute * 1)
@@ -68,9 +68,10 @@ func (w *Worker) Run() error {
 
 func NewWorker(dirSondes string) *Worker {
 	return &Worker{
-		dirSondes: dirSondes,
-		mutex:     &sync.Mutex{},
-		sondes:    make(map[string]*Sonde),
-		errors:    make(map[string]*SondeError),
+		dirSondes:         dirSondes,
+		mutex:             &sync.Mutex{},
+		sondes:            make(map[string]*Sonde),
+		errors:            make(map[string]*SondeError),
+		NotifySondeUpdate: false,
 	}
 }
