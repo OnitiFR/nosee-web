@@ -97,7 +97,7 @@ func (w *Worker) ObserveSondeDir() {
 		} else {
 			running_errors = make(map[string]bool)
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(1 * time.Hour)
 	}
 }
 

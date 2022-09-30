@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const Version = "0.0.1"
+const Version = "1.0.0"
 
 func main() {
 	dirSondes := flag.String("d", "", "Directory with sondes")

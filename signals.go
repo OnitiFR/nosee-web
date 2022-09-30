@@ -17,8 +17,10 @@ func listenSignals(worker *Worker) {
 		signal := <-c
 		switch signal {
 		case syscall.SIGUSR1:
-			displayAllSondesStatus(worker)
+			worker.ScanSondeDirectory()
 		case syscall.SIGUSR2:
+			displayAllSondesStatus(worker)
+		case syscall.SIGQUIT:
 			writeGoroutineStacks(os.Stdout)
 		}
 	}
