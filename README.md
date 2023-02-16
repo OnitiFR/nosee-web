@@ -18,8 +18,8 @@ USR1 : Va lire le dossier des sondes pour mettre à jour la liste des sondes.
 USR2 : débug des sondes en cours avec des informations sur leurs satus
 QUIT : renvoie la liste des go routines en cours
 ```
-- kill -USR1 $(pidof go-wp-sonde)
-- kill -USR2 $(pidof go-wp-sonde)
+- kill -USR1 $(pidof nosee-web)
+- kill -USR2 $(pidof nosee-web)
 
 ### Envs Requis
 - SONDE_SLACK_WEBHOOK_URL

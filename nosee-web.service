@@ -4,10 +4,10 @@ After=network-online.target
 
 [Service]
 User=oniti
-ExecStart=/home/oniti/go/bin/go-wp-sonde -d /home/oniti/nosee/web/
+ExecStart=/home/oniti/go/bin/nosee-web -d /home/oniti/nosee/web/
 Type=simple
 Restart=on-failure
-EnvironmentFile=/home/oniti/.env.go-wp-sonde
+EnvironmentFile=/home/oniti/.env.nosee-web
 
 [Install]
 WantedBy=multi-user.target
