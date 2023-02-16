@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -69,7 +68,7 @@ func DuplicateSondes(oldNoseeSondesDirectory string, destDir string) error {
 		return err
 	}
 
-	files, err := ioutil.ReadDir(oldNoseeSondesDirectory)
+	files, err := os.ReadDir(oldNoseeSondesDirectory)
 	if err != nil {
 		return err
 	}

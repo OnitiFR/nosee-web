@@ -41,7 +41,7 @@ func NotifyNoseeConsole(sonde *Sonde, sonde_err *SondeError) error {
 	payload_type := sonde_err.GetNoseeType()
 	subject := sonde_err.GetNoseeSubject(sonde)
 	details := sonde_err.GetNoseeDetail(sonde)
-	classes := fmt.Sprintf("%s", sonde_err.ErrLvl)
+	classes := string(sonde_err.ErrLvl)
 	hostname := sonde.Url
 	nosee_srv := "sonde wp - Prod"
 	uniqueid := sonde_err.GetUuid()

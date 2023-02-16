@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -112,7 +111,7 @@ func (w *Worker) ScanSondeDirectory() error {
 		return err
 	}
 
-	files, err := ioutil.ReadDir(w.dirSondes)
+	files, err := os.ReadDir(w.dirSondes)
 	if err != nil {
 		return err
 	}
@@ -144,7 +143,7 @@ func (w *Worker) ScanSondeDirectory() error {
 	}
 
 	// check if some sondes have been removed
-	for filename, _ := range w.sondes {
+	for filename := range w.sondes {
 		if _, ok := filesSondes[filename]; !ok {
 			w.RemoveSonde(filename)
 		}
