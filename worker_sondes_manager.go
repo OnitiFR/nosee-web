@@ -129,9 +129,10 @@ func (w *Worker) ScanSondeDirectory() error {
 			return errors.New(message)
 		}
 
+		sonde.warnLimit = w.WarnLimit
+
 		// check if sonde already exists
 		if _, ok := w.sondes[sonde.FileName]; !ok {
-			sonde.WarnLimit = w.WarnLimit
 			w.AppendSonde(sonde)
 			filesSondes[sonde.FileName] = true
 		} else {

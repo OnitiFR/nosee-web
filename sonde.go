@@ -34,7 +34,7 @@ type Sonde struct {
 	LastResponseDelay time.Duration
 	NextExecution     time.Time
 	Errors            map[SondeErrorStatus]*SondeError
-	WarnLimit         int
+	warnLimit         int // number of warning before alert, set by worker
 }
 
 func (sonde *Sonde) checkServError(err error) {
@@ -197,7 +197,7 @@ func (sonde *Sonde) AfterCheck() {
 
 func (sonde *Sonde) Notify(err *SondeError) {
 	// err is Critical or Warning with 2 consecutive errors
-	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarning && err.NbTimeErrors >= sonde.WarnLimit)
+	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarning && err.NbTimeErrors >= sonde.warnLimit)
 	// is not notified or is resolved
 	can_notify = can_notify && (!err.HasBeenNotified || err.IsResolved())
 
@@ -226,8 +226,7 @@ func (sonde *Sonde) Update(s *Sonde) bool {
 		sonde.Delay != s.Delay ||
 		sonde.Index != s.Index ||
 		sonde.Timeout != s.Timeout ||
-		sonde.WarnTime != s.WarnTime ||
-		sonde.WarnLimit != s.WarnLimit
+		sonde.WarnTime != s.WarnTime
 
 	if hasDifferances {
 		sonde.Name = s.Name
@@ -237,7 +236,6 @@ func (sonde *Sonde) Update(s *Sonde) bool {
 		sonde.Delay = s.Delay
 		sonde.Index = s.Index
 		sonde.WarnTime = s.WarnTime
-		sonde.WarnLimit = s.WarnLimit
 	}
 
 	return hasDifferances

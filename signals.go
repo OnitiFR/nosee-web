@@ -37,7 +37,7 @@ func displayAllSondesStatus(worker *Worker) {
 		fmt.Printf("Index : %t\n", sonde.Index)
 		fmt.Printf("Timeout : %d\n", sonde.Timeout)
 		fmt.Printf("WarnTime : %d\n", sonde.WarnTime)
-		fmt.Printf("WarnLimit : %d\n", sonde.WarnLimit)
+		fmt.Printf("warnLimit : %d\n", sonde.warnLimit)
 		fmt.Printf("LastHttpCode : %d\n", sonde.LastHttpCode)
 		fmt.Printf("LastResponseDelay : %s\n", sonde.LastResponseDelay)
 		fmt.Printf("NextExecution : %s\n", sonde.NextExecution.Format("2006-01-02 15:04:05"))
