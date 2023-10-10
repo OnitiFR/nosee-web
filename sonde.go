@@ -49,12 +49,12 @@ func (sonde *Sonde) checkServError(err error) {
 func (sonde *Sonde) checkHttpResponseCode(res http.Response) error {
 	// http code is not 200
 	if res.StatusCode != 200 {
-		sonde.DeclareError(ErrServError, ErrLvlcritical, fmt.Sprintf("response code : %d", res.StatusCode), fmt.Sprintf("response code : %d", res.StatusCode))
+		sonde.DeclareError(ErrServErrorHTTP, ErrLvlcritical, fmt.Sprintf("response code : %d", res.StatusCode), fmt.Sprintf("response code : %d", res.StatusCode))
 
 		return errors.New("response code not 200")
 	}
 
-	sonde.DeclareErrorResolved(ErrServError)
+	sonde.DeclareErrorResolved(ErrServErrorHTTP)
 	return nil
 
 }

@@ -13,6 +13,7 @@ const (
 	ErrNone             SondeErrorStatus = "none"
 	ErrNoOccurence      SondeErrorStatus = "no occurence"
 	ErrServError        SondeErrorStatus = "server error"
+	ErrServErrorHTTP    SondeErrorStatus = "server error http"
 	ErrDelay            SondeErrorStatus = "delay"
 	ErrNoIndex          SondeErrorStatus = "no index"
 	ErrIndexNotExpected SondeErrorStatus = "index but not expected"
