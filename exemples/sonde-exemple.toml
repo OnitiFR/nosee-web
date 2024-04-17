@@ -5,3 +5,5 @@ Timeout = "20s"
 WarnTime = "1s"
 Delay = "1m"
 Index = true
+NbRetentionsWarning = 2
+NbRetentionsCritical = 1

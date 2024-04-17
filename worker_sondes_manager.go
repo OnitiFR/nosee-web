@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -48,6 +49,13 @@ func LoadFromToml(fileSonde string) (*Sonde, error) {
 	sonde.FileName = filename
 	sonde.NextExecution = time.Now()
 	sonde.Errors = make(map[SondeErrorStatus]*SondeError)
+
+	if sonde.NbRetentionsCritical <= 0 {
+		sonde.NbRetentionsCritical = 1
+	}
+	if sonde.NbRetentionsWarning <= 0 {
+		sonde.NbRetentionsWarning = 2
+	}
 
 	return sonde, err
 }
@@ -111,7 +119,7 @@ func (w *Worker) ScanSondeDirectory() error {
 		return err
 	}
 
-	files, err := os.ReadDir(w.dirSondes)
+	files, err := ioutil.ReadDir(w.dirSondes)
 	if err != nil {
 		return err
 	}
@@ -129,8 +137,6 @@ func (w *Worker) ScanSondeDirectory() error {
 			return errors.New(message)
 		}
 
-		sonde.warnLimit = w.WarnLimit
-
 		// check if sonde already exists
 		if _, ok := w.sondes[sonde.FileName]; !ok {
 			w.AppendSonde(sonde)
@@ -144,7 +150,7 @@ func (w *Worker) ScanSondeDirectory() error {
 	}
 
 	// check if some sondes have been removed
-	for filename := range w.sondes {
+	for filename, _ := range w.sondes {
 		if _, ok := filesSondes[filename]; !ok {
 			w.RemoveSonde(filename)
 		}

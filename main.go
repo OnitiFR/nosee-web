@@ -9,13 +9,12 @@ const Version = "1.0.0"
 
 func main() {
 	dirSondes := flag.String("d", "", "Directory with sondes")
-	warnLimit := flag.Int("w", 2, "Number of warning before alert")
 	version := flag.Bool("v", false, "Print version")
-	oldNoseeSondesDirectory := flag.String("c", "", "Duplicate old nosee sondes - abs path")
-	destDir := flag.String("o", "", "Destination directory for new toml files - abs path")
 	test := flag.Bool("t", false, "Test mode - execute test part only")
+	debug := flag.Bool("debug", false, "Debug mode")
 
 	flag.Parse()
+	debugMode := false
 
 	if *test {
 		fmt.Println("Test mode")
@@ -28,25 +27,17 @@ func main() {
 		return
 	}
 
-	if *oldNoseeSondesDirectory != "" {
-		if *destDir == "" {
-			fmt.Println("Destination directory is required")
-			return
-		}
-		err := DuplicateSondes(*oldNoseeSondesDirectory, *destDir)
-		if err != nil {
-			panic(err)
-		}
-		return
-	}
-
 	if *dirSondes == "" {
 		flag.PrintDefaults()
 		return
 	}
 
-	worker := NewWorker(*dirSondes)
-	worker.WarnLimit = *warnLimit
+	if *debug {
+		fmt.Println("Debug mode")
+		debugMode = true
+	}
+
+	worker := NewWorker(*dirSondes, debugMode)
 
 	//check env
 	worker.CheckRequiredEnv()

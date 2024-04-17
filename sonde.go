@@ -22,39 +22,31 @@ func (d *Duration) UnmarshalText(text []byte) error {
 }
 
 type Sonde struct {
-	FileName          string
-	Name              string
-	Url               string
-	Search            string
-	Timeout           Duration
-	WarnTime          Duration
-	Delay             Duration
-	Index             bool
-	LastHttpCode      int
-	LastResponseDelay time.Duration
-	NextExecution     time.Time
-	Errors            map[SondeErrorStatus]*SondeError
-	warnLimit         int // number of warning before alert, set by worker
-}
-
-func (sonde *Sonde) checkServError(err error) {
-	// error on http request
-	if err != nil {
-		sonde.DeclareError(ErrServError, ErrLvlcritical, err.Error(), "http request error")
-	} else {
-		sonde.DeclareErrorResolved(ErrServError)
-	}
+	FileName             string
+	Name                 string
+	Url                  string
+	Search               string
+	Timeout              Duration
+	WarnTime             Duration
+	Delay                Duration
+	Index                bool
+	LastHttpCode         int
+	LastResponseDelay    time.Duration
+	NextExecution        time.Time
+	Errors               map[SondeErrorStatus]*SondeError
+	NbRetentionsWarning  int
+	NbRetentionsCritical int
 }
 
 func (sonde *Sonde) checkHttpResponseCode(res http.Response) error {
 	// http code is not 200
 	if res.StatusCode != 200 {
-		sonde.DeclareError(ErrServErrorHTTP, ErrLvlcritical, fmt.Sprintf("response code : %d", res.StatusCode), fmt.Sprintf("response code : %d", res.StatusCode))
+		sonde.DeclareError(ErrServError, ErrLvlcritical, fmt.Sprintf("response code : %d", res.StatusCode), fmt.Sprintf("response code : %d", res.StatusCode))
 
 		return errors.New("response code not 200")
 	}
 
-	sonde.DeclareErrorResolved(ErrServErrorHTTP)
+	sonde.DeclareErrorResolved(ErrServError)
 	return nil
 
 }
@@ -75,16 +67,12 @@ func (sonde *Sonde) checkContentAndIndex(res http.Response) {
 	// searching keywords in body
 	// checking index page
 	scanner := bufio.NewScanner(res.Body)
-	buf := make([]byte, 0, 64*1024) // default size (64k)
-	scanner.Buffer(buf, 1024*1024)  // max line size (1MB)
-
 	hasSearchContent := false
 	hasNoIndex := false
 	hasFoundCloseHead := false
 
 	var validNoIndex = regexp.MustCompile(`\<meta[ ]+name=["|']robots["|'][ ]+content=["|'].*noindex.*["|']`)
 	var validCloseHead = regexp.MustCompile(`\<\/head\>`)
-
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -126,7 +114,11 @@ func (sonde *Sonde) checkContentAndIndex(res http.Response) {
 /**
  * Check if everything is OK
  */
-func (sonde *Sonde) CheckAll() {
+func (sonde *Sonde) CheckAll(debug bool) {
+
+	if debug {
+		fmt.Printf("Checking %s\n", sonde.Name)
+	}
 
 	defer sonde.AfterCheck()
 
@@ -147,10 +139,11 @@ func (sonde *Sonde) CheckAll() {
 	res, err := client.Get(sonde.Url)
 	sonde.LastResponseDelay = time.Since(start)
 
-	sonde.checkServError(err)
-
 	// no body
 	if err != nil {
+		sonde.checkHttpResponseCode(http.Response{StatusCode: 600})
+		// Log to influxdb
+		sonde.logDefautTimeOutInfluxDB()
 		return
 	}
 
@@ -160,17 +153,30 @@ func (sonde *Sonde) CheckAll() {
 
 	err = sonde.checkHttpResponseCode(*res)
 	if err != nil {
+		// Log to influxdb
+		sonde.logDefautTimeOutInfluxDB()
 		return
 	}
 	sonde.checkHttpResponseTime()
 	sonde.checkContentAndIndex(*res)
 }
 
+func (sonde *Sonde) logDefautTimeOutInfluxDB() {
+	go LogToNoseeInfluxDB(sonde.Name, "response_time", sonde.WarnTime.Duration)
+}
+
 func (sonde *Sonde) DeclareError(err SondeErrorStatus, lvl SondeErrorLevel, msg string, subject string) {
 	if sonde.Errors[err] == nil {
-		sonde.Errors[err] = NewSondeError(err, lvl, msg, subject, time.Now())
+		nbRetentions := 1
+		if lvl == ErrLvlwarning {
+			nbRetentions = sonde.NbRetentionsWarning
+		} else {
+			nbRetentions = sonde.NbRetentionsCritical
+		}
+		sonde.Errors[err] = NewSondeError(err, lvl, msg, subject, time.Now(), nbRetentions)
 	} else {
 		sonde.Errors[err].NbTimeErrors++
+		sonde.Errors[err].NbTimeSolved = 0
 	}
 }
 
@@ -200,14 +206,9 @@ func (sonde *Sonde) AfterCheck() {
 }
 
 func (sonde *Sonde) Notify(err *SondeError) {
-	// err is Critical or Warning with 2 consecutive errors
-	can_notify := err.ErrLvl == ErrLvlcritical || (err.ErrLvl == ErrLvlwarning && err.NbTimeErrors >= sonde.warnLimit)
-	// is not notified or is resolved
-	can_notify = can_notify && (!err.HasBeenNotified || err.IsResolved())
-
-	if can_notify {
+	if err.CanNotify() {
 		// Slack notification
-		slackerr := NotifySlack(err.GetMessage(sonde), err.Solved)
+		slackerr := NotifySlack(err.GetMessage(sonde), err.IsResolved())
 		noseeErr := NotifyNoseeConsole(sonde, err)
 		if slackerr != nil {
 			fmt.Println(slackerr)
@@ -224,13 +225,7 @@ func (sonde *Sonde) Notify(err *SondeError) {
 }
 
 func (sonde *Sonde) Update(s *Sonde) bool {
-	hasDifferances := sonde.Name != s.Name ||
-		sonde.Url != s.Url ||
-		sonde.Search != s.Search ||
-		sonde.Delay != s.Delay ||
-		sonde.Index != s.Index ||
-		sonde.Timeout != s.Timeout ||
-		sonde.WarnTime != s.WarnTime
+	hasDifferances := sonde.Name != s.Name || sonde.Url != s.Url || sonde.Search != s.Search || sonde.Delay != s.Delay || sonde.Index != s.Index || sonde.Timeout != s.Timeout || sonde.NbRetentionsCritical != s.NbRetentionsCritical || sonde.NbRetentionsWarning != s.NbRetentionsWarning || sonde.NbRetentionsCritical != s.NbRetentionsCritical
 
 	if hasDifferances {
 		sonde.Name = s.Name
@@ -239,7 +234,8 @@ func (sonde *Sonde) Update(s *Sonde) bool {
 		sonde.Timeout = s.Timeout
 		sonde.Delay = s.Delay
 		sonde.Index = s.Index
-		sonde.WarnTime = s.WarnTime
+		sonde.NbRetentionsCritical = s.NbRetentionsCritical
+		sonde.NbRetentionsWarning = s.NbRetentionsWarning
 	}
 
 	return hasDifferances

@@ -11,12 +11,11 @@ type SondeErrorStatus string
 
 const (
 	ErrNone             SondeErrorStatus = "none"
-	ErrNoOccurence      SondeErrorStatus = "no occurence"
-	ErrServError        SondeErrorStatus = "server error"
-	ErrServErrorHTTP    SondeErrorStatus = "server error http"
-	ErrDelay            SondeErrorStatus = "delay"
-	ErrNoIndex          SondeErrorStatus = "no index"
-	ErrIndexNotExpected SondeErrorStatus = "index but not expected"
+	ErrNoOccurence                       = "no occurence"
+	ErrServError                         = "server error"
+	ErrDelay                             = "delay"
+	ErrNoIndex                           = "no index"
+	ErrIndexNotExpected                  = "index but not expected"
 )
 
 type SondeErrorLevel string
@@ -34,16 +33,17 @@ type SondeError struct {
 	Error           string
 	OnErrorSince    time.Time
 	NbTimeErrors    int
-	Solved          bool
+	NbTimeSolved    int
 	HasBeenNotified bool
+	NbRetentions    int
 }
 
 func (s *SondeError) IsResolved() bool {
-	return s.Solved
+	return s.NbTimeSolved >= s.NbRetentions
 }
 
 func (s *SondeError) SetResolved() {
-	s.Solved = true
+	s.NbTimeSolved++
 }
 
 func (s *SondeError) SetNotified() {
@@ -98,7 +98,11 @@ func (s *SondeError) GetMessage(sonde *Sonde) string {
 	return message
 }
 
-func NewSondeError(Status SondeErrorStatus, ErrLvl SondeErrorLevel, Error string, Subject string, OnErrorSince time.Time) *SondeError {
+func (s *SondeError) CanNotify() bool {
+	return (s.NbTimeErrors >= s.NbRetentions && !s.HasBeenNotified) || (s.NbTimeSolved >= s.NbRetentions && s.HasBeenNotified)
+}
+
+func NewSondeError(Status SondeErrorStatus, ErrLvl SondeErrorLevel, Error string, Subject string, OnErrorSince time.Time, NbRetentions int) *SondeError {
 	return &SondeError{
 		uuid:         uuid.New().String(),
 		Status:       Status,
@@ -106,7 +110,7 @@ func NewSondeError(Status SondeErrorStatus, ErrLvl SondeErrorLevel, Error string
 		Error:        Error,
 		Subject:      Subject,
 		OnErrorSince: OnErrorSince,
-		Solved:       false,
 		NbTimeErrors: 1,
+		NbRetentions: NbRetentions,
 	}
 }

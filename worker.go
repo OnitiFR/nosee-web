@@ -12,8 +12,8 @@ type Worker struct {
 	errors            map[string]*SondeError
 	dirSondes         string
 	mutex             *sync.Mutex
-	WarnLimit         int
 	NotifySondeUpdate bool
+	Debug             bool
 }
 
 func (w *Worker) CheckRequiredEnv() {
@@ -49,9 +49,12 @@ func (w *Worker) RunAllCheck() {
 	if len(sondesToCheck) > 0 {
 		// add x seconds between each check
 		intervalBetweenChecks := 30 / len(sondesToCheck)
+		if w.Debug {
+			intervalBetweenChecks = 0
+		}
 		for _, sonde := range sondesToCheck {
 			time.Sleep(time.Second * time.Duration(intervalBetweenChecks))
-			go sonde.CheckAll()
+			go sonde.CheckAll(w.Debug)
 		}
 	}
 }
@@ -62,16 +65,21 @@ func (w *Worker) RunAllCheck() {
 func (w *Worker) Run() error {
 	for {
 		w.RunAllCheck()
-		time.Sleep(time.Minute * 1)
+		if w.Debug {
+			time.Sleep(time.Second * 10)
+		} else {
+			time.Sleep(time.Minute * 1)
+		}
 	}
 }
 
-func NewWorker(dirSondes string) *Worker {
+func NewWorker(dirSondes string, debug bool) *Worker {
 	return &Worker{
 		dirSondes:         dirSondes,
 		mutex:             &sync.Mutex{},
 		sondes:            make(map[string]*Sonde),
 		errors:            make(map[string]*SondeError),
 		NotifySondeUpdate: false,
+		Debug:             debug,
 	}
 }
