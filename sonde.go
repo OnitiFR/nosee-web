@@ -225,7 +225,7 @@ func (sonde *Sonde) Notify(err *SondeError) {
 }
 
 func (sonde *Sonde) Update(s *Sonde) bool {
-	hasDifferances := sonde.Name != s.Name || sonde.Url != s.Url || sonde.Search != s.Search || sonde.Delay != s.Delay || sonde.Index != s.Index || sonde.Timeout != s.Timeout || sonde.NbRetentionsCritical != s.NbRetentionsCritical || sonde.NbRetentionsWarning != s.NbRetentionsWarning || sonde.NbRetentionsCritical != s.NbRetentionsCritical
+	hasDifferances := sonde.Name != s.Name || sonde.Url != s.Url || sonde.Search != s.Search || sonde.Delay != s.Delay || sonde.Index != s.Index || sonde.Timeout != s.Timeout || sonde.NbRetentionsWarning != s.NbRetentionsWarning || sonde.NbRetentionsCritical != s.NbRetentionsCritical
 
 	if hasDifferances {
 		sonde.Name = s.Name
