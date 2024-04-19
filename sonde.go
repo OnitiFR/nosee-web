@@ -67,6 +67,9 @@ func (sonde *Sonde) checkContentAndIndex(res http.Response) {
 	// searching keywords in body
 	// checking index page
 	scanner := bufio.NewScanner(res.Body)
+	buf := make([]byte, 0, 64*1024) // default size (64k)
+	scanner.Buffer(buf, 1024*1024)  // max line size (1MB)
+
 	hasSearchContent := false
 	hasNoIndex := false
 	hasFoundCloseHead := false
