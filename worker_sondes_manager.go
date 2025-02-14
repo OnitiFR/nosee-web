@@ -150,7 +150,7 @@ func (w *Worker) ScanSondeDirectory() error {
 	}
 
 	// check if some sondes have been removed
-	for filename, _ := range w.sondes {
+	for filename := range w.sondes {
 		if _, ok := filesSondes[filename]; !ok {
 			w.RemoveSonde(filename)
 		}
