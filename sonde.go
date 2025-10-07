@@ -165,7 +165,7 @@ func (sonde *Sonde) CheckAll(debug bool) {
 }
 
 func (sonde *Sonde) logDefautTimeOutInfluxDB() {
-	go LogToNoseeInfluxDB(sonde.Name, "response_time", sonde.WarnTime.Duration)
+	go LogToNoseeInfluxDB(sonde.Name, "response_time", sonde.Timeout.Duration)
 }
 
 func (sonde *Sonde) DeclareError(err SondeErrorStatus, lvl SondeErrorLevel, msg string, subject string) {

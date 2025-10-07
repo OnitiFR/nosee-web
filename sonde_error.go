@@ -11,11 +11,11 @@ type SondeErrorStatus string
 
 const (
 	ErrNone             SondeErrorStatus = "none"
-	ErrNoOccurence                       = "no occurence"
-	ErrServError                         = "server error"
-	ErrDelay                             = "delay"
-	ErrNoIndex                           = "no index"
-	ErrIndexNotExpected                  = "index but not expected"
+	ErrNoOccurence      SondeErrorStatus = "no occurence"
+	ErrServError        SondeErrorStatus = "server error"
+	ErrDelay            SondeErrorStatus = "delay"
+	ErrNoIndex          SondeErrorStatus = "no index"
+	ErrIndexNotExpected SondeErrorStatus = "index but not expected"
 )
 
 type SondeErrorLevel string
