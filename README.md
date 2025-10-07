@@ -4,7 +4,7 @@ Sonde ayant vocation à surveiller des métrics sur un site web.
 Temps de réponse, contenu du site, si le site est indexé, code HTTP.
 
 ### valeurs par défaut config :
-NbRetentionsWarning = 2 
+NbRetentionsWarning = 3
 NbRetentionsCritical = 1
 
 ### Options

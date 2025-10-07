@@ -54,7 +54,7 @@ func LoadFromToml(fileSonde string) (*Sonde, error) {
 		sonde.NbRetentionsCritical = 1
 	}
 	if sonde.NbRetentionsWarning <= 0 {
-		sonde.NbRetentionsWarning = 2
+		sonde.NbRetentionsWarning = 3
 	}
 
 	return sonde, err
